@@ -12,6 +12,62 @@ import pyqtgraph as pg
 import pyqtgraph.opengl as gl
 import numpy as np
 
+# Dark Mode Theme
+DARK_STYLESHEET = """
+QMainWindow, QWidget {
+    background-color: #2b2b2b;
+    color: #e0e0e0;
+    font-family: 'Segoe UI', sans-serif;
+}
+QGroupBox {
+    border: 2px solid #3e3e3e;
+    border-radius: 6px;
+    margin-top: 1.5em;
+    font-weight: bold;
+    color: #ffd700; /* Gold accent for titles */
+}
+QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 10px;
+    padding: 0 5px;
+}
+QPushButton {
+    background-color: #3e3e3e;
+    border: 1px solid #555;
+    border-radius: 4px;
+    padding: 5px;
+    color: white;
+}
+QPushButton:hover {
+    background-color: #4e4e4e;
+    border: 1px solid #777;
+}
+QPushButton:pressed {
+    background-color: #222;
+}
+QTableWidget {
+    background-color: #1e1e1e;
+    gridline-color: #333;
+    color: #e0e0e0;
+    border: 1px solid #3e3e3e;
+}
+QHeaderView::section {
+    background-color: #333;
+    color: white;
+    padding: 4px;
+    border: 1px solid #444;
+}
+QTextEdit {
+    background-color: #1e1e1e;
+    color: #00ff00; /* Console like text */
+    border: 1px solid #3e3e3e;
+    font-family: 'Consolas', monospace;
+}
+QLabel {
+    color: #e0e0e0;
+}
+"""
+
 # Data Structure Definition
 class TelemetryStruct:
     FMT = '<h I h 3h 3h h 3h h i i h H H I B 5x'
@@ -228,12 +284,12 @@ class GPSDisplayWidget(QWidget):
         
         title = QLabel("GPS COORDINATES")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title.setStyleSheet("font-weight: bold; font-size: 14px; color: #AAA;")
+        title.setStyleSheet("font-weight: bold; font-size: 14px; color: #e0e0e0;")
         layout.addWidget(title)
         
         self.val_label = QLabel("Lat: --\nLon: -")
         self.val_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.val_label.setStyleSheet("font-size: 24px; font-weight: bold; color: gold; border: 2px solid white; border-radius: 5px; padding: 10px; background-color: #222;")
+        self.val_label.setStyleSheet("font-size: 24px; font-weight: bold; color: gold; border: 2px solid #555; border-radius: 5px; padding: 10px; background-color: #1e1e1e;")
         layout.addWidget(self.val_label)
 
     def update_gps(self, lat, lon, alt):
@@ -595,10 +651,10 @@ class GroundStationWindow(QMainWindow):
         self.state_label.setStyleSheet("font-size: 24px; font-weight: bold; color: green;")
         
         self.total_time_label = QLabel("PROG: 0s")
-        self.total_time_label.setStyleSheet("font-size: 18px; font-weight: bold; color: #BBB; background-color: #333; padding: 5px;")
+        self.total_time_label.setStyleSheet("font-size: 18px; font-weight: bold; color: #e0e0e0; background-color: #1e1e1e; padding: 5px;")
         
         self.timer_label = QLabel("FLIGHT: 0.0s")
-        self.timer_label.setStyleSheet("font-size: 24px; font-weight: bold; color: white; background-color: #333; padding: 5px;")
+        self.timer_label.setStyleSheet("font-size: 24px; font-weight: bold; color: white; background-color: #1e1e1e; padding: 5px;")
         
         self.scale_btn = QPushButton("SCALE: FLIGHT")
         self.scale_btn.setStyleSheet("background-color: #004488; color: white; font-weight: bold; font-size: 16px; padding: 10px;")
@@ -802,6 +858,8 @@ class GroundStationWindow(QMainWindow):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
+    app.setStyle("Fusion") # Fusion is good base for dark themes
+    app.setStyleSheet(DARK_STYLESHEET)
     window = GroundStationWindow()
     window.show()
     sys.exit(app.exec())
