@@ -350,7 +350,7 @@ class FlightPathWidget(QWidget):
         btn_layout.setSpacing(2)
         
         # 1. Legend - Single Line
-        legend = QLabel("Z:500m | Grn:Asc | Red:Dsc")
+        legend = QLabel("Z-axis: 500m | Green:Asc | Red:Dsc")
         legend.setStyleSheet("color: white; font-weight: bold; background-color: rgba(0,0,0,100); padding: 1px; font-size: 10px;")
         legend.setFixedHeight(15)
         btn_layout.addWidget(legend)
@@ -362,31 +362,34 @@ class FlightPathWidget(QWidget):
         
         btn_style = "font-size: 9px; padding: 0px; margin: 0px;"
         
-        btn_n = QPushButton("N")
-        btn_n.setFixedSize(20, 20)
+        btn_n = QPushButton("North")
+        btn_n.setFixedSize(30, 20)
         btn_n.setStyleSheet(btn_style)
         btn_n.clicked.connect(lambda: self.set_camera(-90, 0))
         pad_layout.addWidget(btn_n, 0, 1)
         
-        btn_w = QPushButton("W")
-        btn_w.setFixedSize(20, 20)
+        btn_w = QPushButton("West")
+        btn_w.setFixedSize(30, 20)
         btn_w.setStyleSheet(btn_style)
         btn_w.clicked.connect(lambda: self.set_camera(0, 0))
         pad_layout.addWidget(btn_w, 1, 0)
         
-        btn_e = QPushButton("E")
-        btn_e.setFixedSize(20, 20)
+        btn_e = QPushButton("East")
+        btn_e.setFixedSize(30, 20)
         btn_e.setStyleSheet(btn_style)
         btn_e.clicked.connect(lambda: self.set_camera(180, 0))
         pad_layout.addWidget(btn_e, 1, 2)
         
-        btn_s = QPushButton("S")
-        btn_s.setFixedSize(20, 20)
+        btn_s = QPushButton("South")
+        btn_s.setFixedSize(30, 20)
         btn_s.setStyleSheet(btn_style)
         btn_s.clicked.connect(lambda: self.set_camera(90, 0))
         pad_layout.addWidget(btn_s, 2, 1)
         
         btn_layout.addLayout(pad_layout)
+        
+        # Add Spacing
+        btn_layout.addSpacing(30)
         
         # 3. Stacked Move Buttons
         move_layout = QVBoxLayout()
@@ -399,7 +402,7 @@ class FlightPathWidget(QWidget):
         btn_up.clicked.connect(lambda: self.move_camera_z(200))
         move_layout.addWidget(btn_up)
         
-        btn_down = QPushButton("Dn")
+        btn_down = QPushButton("Down")
         btn_down.setFixedSize(30, 20)
         btn_down.setStyleSheet(btn_style)
         btn_down.clicked.connect(lambda: self.move_camera_z(-200))
@@ -407,15 +410,17 @@ class FlightPathWidget(QWidget):
         
         btn_layout.addLayout(move_layout)
         
-        btn_layout.addStretch()
-        
+        btn_layout.addSpacing(30)
+
         # 4. Reset Camera
-        btn_reset = QPushButton("Rst")
-        btn_reset.setFixedSize(25, 40)
+        btn_reset = QPushButton("Reset")
+        btn_reset.setFixedSize(40, 20)
         btn_reset.setStyleSheet("background-color: #444; color: white; font-size: 9px; padding: 0px;")
         btn_reset.clicked.connect(self.reset_camera)
         btn_layout.addWidget(btn_reset)
         
+        btn_layout.addStretch()
+
         layout.addWidget(btn_container)
         
         self.view = gl.GLViewWidget()
