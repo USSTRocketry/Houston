@@ -528,7 +528,7 @@ class RocketOrientationWidget(QWidget):
         layout.setContentsMargins(0,0,0,0)
         
         # Legend for Directions - Smaller
-        legend = QLabel("Red=N | Grn=E | Blu=Up | Yel=W | Pur=S")
+        legend = QLabel("Red=N | Green=E | Blue=Up | Yellow=W | Purple=S")
         legend.setStyleSheet("color: white; font-weight: bold; background-color: rgba(0,0,0,100); padding: 1px; font-size: 9px;") 
         legend.setFixedHeight(15) 
         layout.addWidget(legend)
