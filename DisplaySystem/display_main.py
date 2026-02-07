@@ -847,7 +847,7 @@ class GroundStationWindow(QMainWindow):
 
     def scale_graphs_to_flight(self):
         samples = int(self.current_flight_time) + 5 
-        self.log(f"Scaling graphs to last {samples} seconds/samples...")
+        # self.log(f"Scaling graphs to last {samples} seconds/samples...")
         self.accel_plot.zoom_to_last(samples)
         self.alt_plot.zoom_to_last(samples)
         self.temp_plot.zoom_to_last(samples)
