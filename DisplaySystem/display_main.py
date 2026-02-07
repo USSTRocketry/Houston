@@ -577,12 +577,20 @@ class RocketOrientationWidget(QWidget):
         md_nose = gl.MeshData.cylinder(rows=10, cols=20, radius=[1.0, 0.0], length=2.0)
         self.nose = gl.GLMeshItem(meshdata=md_nose, smooth=True, color=(1, 0, 0, 1), shader='balloon')
         
+        # Tip Dot
+        md_dot = gl.MeshData.sphere(rows=10, cols=20, radius=0.2)
+        self.tip_dot = gl.GLMeshItem(meshdata=md_dot, smooth=True, color=(1, 1, 1, 1), shader='balloon')
+        
         # Assemble
         self.body.translate(0, 0, -2.5)
         self.nose.translate(0, 0, 2.5)
         
+        self.tip_offset = 4.25 # Top of nose (2.5 start + 2.0 length)
+        self.tip_dot.translate(0, 0, self.tip_offset) 
+        
         self.view.addItem(self.body)
         self.view.addItem(self.nose)
+        self.view.addItem(self.tip_dot)
         
     def set_camera(self, az, el):
         self.view.opts['center'] = QVector3D(0, 0, 0)
@@ -593,9 +601,11 @@ class RocketOrientationWidget(QWidget):
         self.body.translate(0, 0, -2.5)
         self.nose.resetTransform()
         self.nose.translate(0, 0, 2.5)
+        self.tip_dot.resetTransform()
+        self.tip_dot.translate(0, 0, self.tip_offset)
         
         # Rotate
-        for item in [self.body, self.nose]:
+        for item in [self.body, self.nose, self.tip_dot]:
             item.rotate(yaw, 0, 0, 1)
             item.rotate(pitch, 1, 0, 0)
             item.rotate(roll, 0, 1, 0)
