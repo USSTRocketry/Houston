@@ -6,11 +6,17 @@ import math
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                              QHBoxLayout, QLabel, QTextEdit, QPushButton, QGridLayout,
                              QGroupBox, QTableWidget, QTableWidgetItem, QHeaderView)
-from PyQt6.QtCore import QThread, pyqtSignal, Qt, QTimer
+from PyQt6.QtCore import QThread, pyqtSignal, Qt, QTimer, QDateTime
 from PyQt6.QtGui import QVector3D
 import pyqtgraph as pg
 import pyqtgraph.opengl as gl
 import numpy as np
+import socket
+import json
+
+# Network Configuration
+HOST = '127.0.0.1' # Localhost for simulation
+PORT = 33333
 
 # Dark Mode Theme
 DARK_STYLESHEET = """
@@ -69,161 +75,58 @@ QLabel {
 """
 
 # Data Structure Definition
-class TelemetryStruct:
-    FMT = '<h I h 3h 3h h 3h h i i h H H I B 5x'
-    SIZE = struct.calcsize(FMT)
 
-    @staticmethod
-    def pack(data):
-        return struct.pack(TelemetryStruct.FMT, *data)
 
-    @staticmethod
-    def unpack(data):
-        return struct.unpack(TelemetryStruct.FMT, data)
-
-class DataGenerator(QThread):
-    new_data = pyqtSignal(object)  # Emits the unpacked tuple
+class NetworkReceiver(QThread):
+    new_data = pyqtSignal(object)  # Emits the dict
     log_message = pyqtSignal(str)
 
     def __init__(self):
         super().__init__()
         self.running = True
-        # Initial simulation state
-        self.lat = 29.56
-        self.lon = -95.09 # Clear Lake area approximate
-        self.alt = 0.0 # Start at ground
-        self.max_alt = 0.0
-        
-        # Random Walk State
-        self.bmp_temp = 25.0
-        self.pressure = 1013.0
-        self.imu_temp = 30.0
-        self.extra_temp = 20.0
-        self.accel = [0, 0, 9.8]
-        self.gyro = [0, 0, 0]
-        self.mag = [0, 0, 0]
-        self.gps_speed = 0.0
-        self.gps_angle = 0.0
-        
-        # State Machine
-        self.state = 0 # 0: Idle
-        self.state_timer = 0
-        self.flight_start_time = 0
+        self.connected = False
 
     def run(self):
-        start_time = time.time()
-        print("Data Generator Started")
+        self.log_message.emit(f"Connecting to {HOST}:{PORT}...")
         
         while self.running:
-            current_time = time.time()
-            elapsed = current_time - start_time
-            
-            # State Machine Logic
-            flight_time = 0
-            
-            if self.state == 0: # Idle
-                self.alt = 50.0 # Pad elevation
-                if elapsed > 5.0:
-                    self.state = 1
-                    self.flight_start_time = current_time
-                    self.log_message.emit("LAUNCH DETECTED!")
-            
-            elif self.state == 1: # Flight (Ascent)
-                flight_time = current_time - self.flight_start_time
-                self.alt += random.uniform(10, 20) # Go up fast
-                self.accel[2] = 20.0 + random.uniform(-2, 2)
+            try:
+                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                # s.settimeout(3.0) # Timeout for connect
+                s.connect((HOST, PORT))
+                self.connected = True
+                self.log_message.emit("Connected to Telemetry Server")
                 
-                if self.alt > 1500:
-                    self.state = 2
-                    self.max_alt = self.alt
-                    self.log_message.emit("APOGEE DETECTED!")
-                    
-            elif self.state == 2: # Apogee
-                flight_time = current_time - self.flight_start_time
-                self.alt += random.uniform(-2, 2) # Hover
-                self.accel[2] = 0.0 + random.uniform(-1, 1) # Freefall start
-                self.state_timer += 1
-                if self.state_timer > 3: # Short apogee
-                    self.state = 3
-                    self.log_message.emit("DESCENT DETECTED!")
-            
-            elif self.state == 3: # Descent
-                flight_time = current_time - self.flight_start_time
-                self.alt -= random.uniform(10, 15)
-                self.accel[2] = 9.8 + random.uniform(-5, 5) # Drogue/Main
+                buffer = ""
+                while self.running:
+                    try:
+                        chunk = s.recv(1024).decode('utf-8')
+                        if not chunk:
+                            break
+                        
+                        buffer += chunk
+                        while "\n" in buffer:
+                            line, buffer = buffer.split("\n", 1)
+                            if line.strip():
+                                try:
+                                    data = json.loads(line)
+                                    self.new_data.emit(data)
+                                except json.JSONDecodeError:
+                                    print("JSON Error:", line)
+                    except socket.error:
+                        break # Go to outer loop to reconnect
+                        
+                s.close()
+                self.connected = False
+                self.log_message.emit("Disconnected. Retrying...")
+                time.sleep(3)
                 
-                if self.alt <= 50.0:
-                    self.alt = 50.0
-                    self.state = 4
-                    self.log_message.emit("LANDING DETECTED!")
-            
-            elif self.state == 4: # Landed
-                flight_time = current_time - self.flight_start_time # Keep final time
-                pass
-            
-            # Helper to walk
-            def walk(val, delta, min_val, max_val):
-                val += random.uniform(-delta, delta)
-                return max(min_val, min(val, max_val))
-
-            self.bmp_temp = walk(self.bmp_temp, 0.5, 10.0, 40.0)
-            self.pressure = walk(self.pressure, 1.0, 900.0, 1100.0)
-            
-            # Simulate consistent Wind Drift (Arc) instead of random walk
-            # ~1m/s drift in X, 0.5m/s in Y
-            if self.state in [1, 2, 3]: # In flight
-                self.lat += 0.000005 
-                self.lon += 0.00001
-            else:
-                # Random jitter on pad/landed
-                self.lat += random.uniform(-0.000001, 0.000001)
-                self.lon += random.uniform(-0.000001, 0.000001)
-            self.gps_speed = walk(self.gps_speed, 5.0, 0.0, 200.0)
-            self.gps_angle = walk(self.gps_angle, 10.0, 0.0, 360.0)
-            
-            bmp_alt = int(self.alt * 10)
-            
-            self.accel[0] = walk(self.accel[0], 0.5, -5.0, 5.0)
-            self.accel[1] = walk(self.accel[1], 0.5, -5.0, 5.0)
-            
-            self.gyro[0] = walk(self.gyro[0], 5.0, -300.0, 300.0)
-            self.gyro[1] = walk(self.gyro[1], 5.0, -300.0, 300.0)
-            self.gyro[2] = walk(self.gyro[2], 5.0, -300.0, 300.0)
-            
-            self.imu_temp = walk(self.imu_temp, 0.2, 20.0, 50.0)
-            self.extra_temp = walk(self.extra_temp, 0.5, 0.0, 40.0)
-            
-            self.mag[0] = walk(self.mag[0], 1.0, -60.0, 60.0)
-            self.mag[1] = walk(self.mag[1], 1.0, -60.0, 60.0)
-            self.mag[2] = walk(self.mag[2], 1.0, -60.0, 60.0)
-            
-            timestamp = int(time.time())
-            
-            # Flatten tuple for pack
-            packet_data = (
-                int(self.bmp_temp * 100), int(self.pressure * 100), bmp_alt,
-                int(self.accel[0]*100), int(self.accel[1]*100), int(self.accel[2]*100),
-                int(self.gyro[0]*100), int(self.gyro[1]*100), int(self.gyro[2]*100),
-                int(self.imu_temp * 100), 
-                int(self.mag[0]*100), int(self.mag[1]*100), int(self.mag[2]*100), 
-                int(self.extra_temp * 100),
-                int(self.lat * 1e7), int(self.lon * 1e7), int(self.alt * 10), 
-                int(self.gps_speed * 100), int(self.gps_angle * 100),
-                timestamp, self.state
-            )
-            
-            # Pack to binary (simulation of radio)
-            binary_packet = TelemetryStruct.pack(packet_data)
-            
-            # Use unpack to verify and emit
-            unpacked_data = TelemetryStruct.unpack(binary_packet)
-            
-            # Append flight_time manually for the GUI
-            final_data = unpacked_data + (flight_time,)
-            
-            self.new_data.emit(final_data)
-            
-            time.sleep(1.0) 
+            except Exception:
+                # Connection failed
+                self.connected = False
+                # Do not spam log. Only log if this is a "new" failure or periodically?
+                # For now, just wait silently to avoid pollution
+                time.sleep(3)
 
     def stop(self):
         self.running = False
@@ -243,9 +146,10 @@ class ScrollingPlot(QWidget):
         
         self.layout.addWidget(self.plot_widget)
         
-        self.data_buffer_size = 10000 # Increased buffer
+        self.max_points = 30000 
         self.curves = []
-        self.data = []
+        self.x_data = [] # Shared X-axis (Time)
+        self.y_data = [] # List of lists for Y-values
 
         # Add infinite line for threshold
         if threshold is not None:
@@ -256,25 +160,45 @@ class ScrollingPlot(QWidget):
         # Increased line width to 2 as requested
         curve = self.plot_widget.plot(pen=pg.mkPen(color, width=2), name=name)
         self.curves.append(curve)
-        self.data.append(np.zeros(self.data_buffer_size))
+        self.y_data.append([])
         
-    def update_data(self, new_values):
+    def update_data(self, t, new_values):
+        # Update X Data
+        self.x_data.append(t)
+        if len(self.x_data) > self.max_points:
+            self.x_data.pop(0)
+            
+        # Update Y Data for each curve
         for i, val in enumerate(new_values):
-            if i < len(self.data):
-                self.data[i] = np.roll(self.data[i], -1)
-                self.data[i][-1] = val
-                self.curves[i].setData(self.data[i])
+            if i < len(self.y_data):
+                self.y_data[i].append(val)
+                if len(self.y_data[i]) > self.max_points:
+                    self.y_data[i].pop(0)
+                
+        # Plot (efficiently)
+        # Only update if we have data
+        if self.x_data:
+            x_arr = np.array(self.x_data)
+            for i, curve in enumerate(self.curves):
+                 y_arr = np.array(self.y_data[i])
+                 # Handle NaNs for gaps
+                 curve.setData(x_arr, y_arr, connect="finite")
 
-    def zoom_to_last(self, n_samples):
-        if n_samples > 0:
-            self.plot_widget.setXRange(self.data_buffer_size - n_samples, self.data_buffer_size)
+    def zoom_to_last(self, duration):
+        if not self.x_data:
+            return
+            
+        current_time = self.x_data[-1]
+        if duration > 0:
+            self.plot_widget.setXRange(current_time - duration, current_time)
         else:
-             self.plot_widget.setXRange(self.data_buffer_size - 100, self.data_buffer_size)
+             self.plot_widget.setXRange(0, current_time) # Show All from 0
 
     def reset(self):
-        for i in range(len(self.data)):
-            self.data[i] = np.zeros(self.data_buffer_size)
-            self.curves[i].setData(self.data[i])
+        self.x_data = []
+        for i in range(len(self.y_data)):
+            self.y_data[i] = []
+            self.curves[i].setData([], [], connect="finite")
 
 class GPSDisplayWidget(QWidget):
     def __init__(self):
@@ -309,10 +233,10 @@ class GroundTrackWidget(QWidget):
         
         self.path_curve = self.plot.plot(pen=pg.mkPen('c', width=3), name='Path')
         
-        self.start_scatter = pg.ScatterPlotItem(size=10, pen=pg.mkPen(None), brush=pg.mkBrush(255, 0, 0, 255), name='Start')
+        self.start_scatter = pg.ScatterPlotItem(size=10, pen=pg.mkPen(None), brush=pg.mkBrush(0, 255, 0, 255), name='Start')
         self.plot.addItem(self.start_scatter)
         
-        self.current_scatter = pg.ScatterPlotItem(size=10, pen=pg.mkPen(None), brush=pg.mkBrush(0, 255, 0, 255), name='Current')
+        self.current_scatter = pg.ScatterPlotItem(size=10, pen=pg.mkPen(None), brush=pg.mkBrush(255, 0, 0, 255), name='Current')
         self.plot.addItem(self.current_scatter)
         
         self.lats = []
@@ -648,6 +572,12 @@ class GroundStationWindow(QMainWindow):
         self.resize(1600, 950)
         self.program_start_time = time.time()
         self.current_flight_time = 0.0
+        self.last_state = -1
+        self.blink_timer = QTimer()
+        self.blink_timer.timeout.connect(self.blink_state_label)
+        self.blink_counter = 0
+        self.normal_state_color = "green"
+        self.last_packet_time = 0.0 # For gap detection
         
         # Main layout container
         main_widget = QWidget()
@@ -671,8 +601,18 @@ class GroundStationWindow(QMainWindow):
         self.timer_label = QLabel("FLIGHT: 0.0s")
         self.timer_label.setStyleSheet("font-size: 24px; font-weight: bold; color: white; background-color: #1e1e1e; padding: 5px;")
         
-        self.scale_btn = QPushButton("SCALE: FLIGHT")
-        self.scale_btn.setStyleSheet("background-color: #004488; color: white; font-weight: bold; font-size: 16px; padding: 10px;")
+        self.real_time_label = QLabel("REAL: --:--:--")
+        self.real_time_label.setStyleSheet("font-size: 18px; font-weight: bold; color: #aaa; background-color: #1e1e1e; padding: 5px;")
+        
+        self.t_zero_label = QLabel("T-NULL: --:--:--")
+        self.t_zero_label.setStyleSheet("font-size: 18px; font-weight: bold; color: #aaa; background-color: #1e1e1e; padding: 5px;")
+
+        self.scale_btn = QPushButton("SCALE FLIGHT")
+        self.scale_btn.setCheckable(True) # Toggle
+        self.scale_btn.setStyleSheet("""
+            QPushButton { background-color: #444; color: white; font-weight: bold; font-size: 16px; padding: 10px; }
+            QPushButton:checked { background-color: #004488; border: 2px solid #0088ff; }
+        """)
         self.scale_btn.clicked.connect(self.scale_graphs_to_flight)
         
         self.abort_btn = QPushButton("ABORT")
@@ -684,6 +624,10 @@ class GroundStationWindow(QMainWindow):
         self.header_layout.addWidget(self.total_time_label) 
         self.header_layout.addSpacing(10)
         self.header_layout.addWidget(self.timer_label) 
+        self.header_layout.addSpacing(10)
+        self.header_layout.addWidget(self.real_time_label)
+        self.header_layout.addSpacing(10)
+        self.header_layout.addWidget(self.t_zero_label)
         self.header_layout.addStretch()
         self.header_layout.addWidget(self.scale_btn)
         self.header_layout.addSpacing(10)
@@ -768,59 +712,133 @@ class GroundStationWindow(QMainWindow):
         # MOVED TO CORRECT LOCATION (End of __init__)
         self.layout.addLayout(self.graphs_layout, 1, 3, 2, 1)
 
-        # Data Generator Thread
-        self.data_thread = DataGenerator()
+        # Network Receiver Thread
+        self.data_thread = NetworkReceiver()
         self.data_thread.new_data.connect(self.update_display)
         self.data_thread.log_message.connect(self.log)
         self.data_thread.start()
+        
+        # Log Program Start
+        start_dt = QDateTime.fromSecsSinceEpoch(int(self.program_start_time))
+        self.log(f"PROG START: {start_dt.toString('HH:mm:ss')}")
 
+    def blink_state_label(self):
+        self.blink_counter += 1
+        if self.blink_counter > 6: # Blink 3 times (On/Off)
+            self.blink_timer.stop()
+            self.state_label.setStyleSheet(f"font-size: 24px; font-weight: bold; color: {self.normal_state_color};")
+            return
+            
+        if self.blink_counter % 2 == 0:
+            color = self.normal_state_color
+        else:
+            color = "white" # Blink color
+            
+        self.state_label.setStyleSheet(f"font-size: 24px; font-weight: bold; color: {color};")
+        
     def update_display(self, data):
-        # Data tuple has one extra element now: flight_time
-        flight_time = data[-1]
-        packet_data = data[:-1]
+        # Data is now a dict from JSON
         
-        # Extract fields
-        # structure: bmp_temp, pressure, bmp_alt, ax, ay, az, gx, gy, gz, imu_temp, mx, my, mz, ext_temp, 
-        #            lat, lon, gps_alt, speed, angle, time, state
+        # Calculate Program Time (Session Time)
+        current_sys_time = time.time()
+        prog_time = current_sys_time - self.program_start_time
         
-        # Scaling
-        bmp_temp = packet_data[0] / 100.0
-        pressure = packet_data[1] / 100.0
-        bmp_alt = packet_data[2] / 10.0
-        accel_x = packet_data[3] / 100.0
-        accel_y = packet_data[4] / 100.0
-        accel_z = packet_data[5] / 100.0
-        gyro_x = packet_data[6] / 100.0
-        gyro_y = packet_data[7] / 100.0
-        gyro_z = packet_data[8] / 100.0
-        imu_temp = packet_data[9] / 100.0
-        mag_x = packet_data[10] / 100.0
-        mag_y = packet_data[11] / 100.0
-        mag_z = packet_data[12] / 100.0
-        extra_temp = packet_data[13] / 100.0
-        lat = packet_data[14] / 1e7
-        lon = packet_data[15] / 1e7
-        gps_alt = packet_data[16] / 10.0
-        speed = packet_data[17] / 100.0
-        angle = packet_data[18] / 100.0
-        timestamp = packet_data[19]
-        state = packet_data[20] # State is last in packer logic (before appending flight_time)
+        # Scaling (Direct access from JSON, no more int scaling)
+        bmp_temp = data.get("bmp_temp", 0)
+        pressure = data.get("pressure", 0)
+        bmp_alt = data.get("bmp_alt", 0)
+        accel_x = data.get("accel_x", 0)
+        accel_y = data.get("accel_y", 0)
+        accel_z = data.get("accel_z", 0)
+        gyro_x = data.get("gyro_x", 0)
+        gyro_y = data.get("gyro_y", 0)
+        gyro_z = data.get("gyro_z", 0)
+        imu_temp = data.get("imu_temp", 0)
+        mag_x = data.get("mag_x", 0)
+        mag_y = data.get("mag_y", 0)
+        mag_z = data.get("mag_z", 0)
+        extra_temp = data.get("extra_temp", 0)
+        lat = data.get("lat", 0)
+        lon = data.get("lon", 0)
+        gps_alt = data.get("gps_alt", 0)
+        speed = data.get("gps_speed", 0)
+        angle = data.get("gps_angle", 0)
+        timestamp = data.get("timestamp", 0)
+        state = data.get("state", 0)
+        flight_time = data.get("flight_time", 0)
 
         # State Map
         state_map = {0: "IDLE", 1: "FLIGHT", 2: "APOGEE", 3: "DESCENDING", 4: "LANDED"}
         state_str = state_map.get(state, "UNKNOWN")
-        self.state_label.setText(f"STATE: {state_str}")
         
+        # State Change Logic
+        if state != self.last_state:
+            # Determine color based on state
+            if state == 0: self.normal_state_color = "green"
+            elif state == 1: self.normal_state_color = "magenta" # Boost
+            elif state == 2: self.normal_state_color = "cyan" # Coast
+            elif state == 3: self.normal_state_color = "yellow" # Descent
+            elif state == 4: self.normal_state_color = "orange" # Landed
+            else: self.normal_state_color = "white"
+            
+            # Log Change
+            current_abs_time = QDateTime.currentDateTime().toString("HH:mm:ss")
+            self.log(f"STATE CHANGE: {state_str} (T+{flight_time:.1f}s) @ {current_abs_time}")
+            
+            if state == 1 and self.last_state == 0:
+                self.log(f"LAUNCH DETECTED @ {current_abs_time}")
+            
+            # Trigger Blink
+            self.state_label.setText(f"STATE: {state_str}") # Update text before blink
+            self.blink_counter = 0
+            self.blink_timer.start(200) # 200ms blink
+            
+            self.last_state = state
+        
+        # Ensure label text is up to date even if not blinking (e.g. initial)
+        if not self.blink_timer.isActive():
+             self.state_label.setText(f"STATE: {state_str}")
+             self.state_label.setStyleSheet(f"font-size: 24px; font-weight: bold; color: {self.normal_state_color};")
+
         self.timer_label.setText(f"FLIGHT: {flight_time:.1f}s")
         self.current_flight_time = flight_time
         
-        prog_elapsed = int(time.time() - self.program_start_time)
+        # Real Time Clock
+        now = QDateTime.currentDateTime()
+        self.real_time_label.setText(f"REAL: {now.toString('HH:mm:ss')}")
+        
+        # T-Zero Clock
+        if flight_time > 0 and state > 0:
+             # Calculate Launch Time
+             # Launch Time = Now - Flight Time
+             launch_time = now.addMSecs(int(-flight_time * 1000))
+             self.t_zero_label.setText(f"T-ZERO: {launch_time.toString('HH:mm:ss')}")
+        else:
+             self.t_zero_label.setText("T-ZERO: WAITING")
+        
+        prog_elapsed = int(prog_time)
         self.total_time_label.setText(f"PROG: {prog_elapsed}s")
+        
+        # Auto-Scale if Toggle is ON
+        if self.scale_btn.isChecked():
+            self.scale_graphs_to_flight()
+
+        # Robustness: Gap Detection
+        packet_time = data.get("timestamp", 0)
+        # 1.5s threshold
+        if self.last_packet_time > 0 and (packet_time - self.last_packet_time > 1.5):
+            self.log(f"Gap detected ({packet_time - self.last_packet_time:.1f}s). Padding with NaNs.")
+            gap_time = prog_time - 0.1
+            self.accel_plot.update_data(gap_time, [np.nan, np.nan, np.nan])
+            self.alt_plot.update_data(gap_time, [np.nan, np.nan])
+            self.temp_plot.update_data(gap_time, [np.nan, np.nan])
+            
+        self.last_packet_time = packet_time
 
         # Update Plots
-        self.accel_plot.update_data([accel_x, accel_y, accel_z])
-        self.alt_plot.update_data([bmp_alt + 20, gps_alt]) 
-        self.temp_plot.update_data([bmp_temp, extra_temp])
+        self.accel_plot.update_data(prog_time, [accel_x, accel_y, accel_z])
+        self.alt_plot.update_data(prog_time, [bmp_alt + 20, gps_alt]) 
+        self.temp_plot.update_data(prog_time, [bmp_temp, extra_temp])
         
         # Update Table
         table_data = {
@@ -861,11 +879,27 @@ class GroundStationWindow(QMainWindow):
         self.log("!!! ABORT COMMAND SENT !!!")
 
     def scale_graphs_to_flight(self):
-        samples = int(self.current_flight_time) + 5 
-        # self.log(f"Scaling graphs to last {samples} seconds/samples...")
-        self.accel_plot.zoom_to_last(samples)
-        self.alt_plot.zoom_to_last(samples)
-        self.temp_plot.zoom_to_last(samples)
+        # Data rate is approx 2 Hz (0.5s period)
+        # We want to see the flight duration + small buffer
+        flight_duration = self.current_flight_time
+        if flight_duration <= 0:
+            return # No flight to scale to
+            
+        zoom_duration = flight_duration + 5.0
+        
+        # Ensure we disable auto-range for X, but ENABLE for Y (as requested)
+        self.accel_plot.plot_widget.plotItem.getViewBox().enableAutoRange(axis='x', enable=False)
+        self.accel_plot.plot_widget.plotItem.getViewBox().enableAutoRange(axis='y', enable=True)
+        
+        self.alt_plot.plot_widget.plotItem.getViewBox().enableAutoRange(axis='x', enable=False)
+        self.alt_plot.plot_widget.plotItem.getViewBox().enableAutoRange(axis='y', enable=True)
+        
+        self.temp_plot.plot_widget.plotItem.getViewBox().enableAutoRange(axis='x', enable=False)
+        self.temp_plot.plot_widget.plotItem.getViewBox().enableAutoRange(axis='y', enable=True)
+        
+        self.accel_plot.zoom_to_last(zoom_duration)
+        self.alt_plot.zoom_to_last(zoom_duration)
+        self.temp_plot.zoom_to_last(zoom_duration)
 
     def closeEvent(self, event):
         self.data_thread.stop()
