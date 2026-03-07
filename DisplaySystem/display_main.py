@@ -32,7 +32,7 @@ class ButtobBar(QVBoxLayout):
         super().__init__(*args, **kwargs)
 
         vbox_widg = QWidget()
-
+        
         vbox = QVBoxLayout()
         bttn = QPushButton()
         vbox.addWidget(QSlider())
