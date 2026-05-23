@@ -13,9 +13,10 @@ import pyqtgraph.opengl as gl
 import numpy as np
 import socket
 import json
+from ProtoCodec import ProtoDecode
 
 # Network Configuration
-HOST = '127.0.0.1' # Localhost for simulation
+HOST = '239.255.0.1' # Multicast IP
 PORT = 33333
 
 # Dark Mode Theme
@@ -87,45 +88,43 @@ class NetworkReceiver(QThread):
         self.connected = False
 
     def run(self):
-        self.log_message.emit(f"Connecting to {HOST}:{PORT}...")
+        self.log_message.emit(f"Binding to Multicast {HOST}:{PORT}...")
         
         while self.running:
             try:
-                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                # s.settimeout(3.0) # Timeout for connect
-                s.connect((HOST, PORT))
-                self.connected = True
-                self.log_message.emit("Connected to Telemetry Server")
+                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                s.bind(("", PORT))
                 
-                buffer = ""
+                group = socket.inet_aton(HOST)
+                mreq = struct.pack("4sL", group, socket.INADDR_ANY)
+                s.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
+                s.settimeout(1.0) # 1 sec timeout so we check self.running
+
+                self.connected = True
+                self.log_message.emit("Listening to UDP Telemetry Multicast")
+                
                 while self.running:
                     try:
-                        chunk = s.recv(1024).decode('utf-8')
-                        if not chunk:
-                            break
-                        
-                        buffer += chunk
-                        while "\n" in buffer:
-                            line, buffer = buffer.split("\n", 1)
-                            if line.strip():
-                                try:
-                                    data = json.loads(line)
-                                    self.new_data.emit(data)
-                                except json.JSONDecodeError:
-                                    print("JSON Error:", line)
-                    except socket.error:
-                        break # Go to outer loop to reconnect
+                        data, addr = s.recvfrom(2048)
+                        decoded_dict = ProtoDecode(data)
+                        if decoded_dict:
+                            self.new_data.emit(decoded_dict)
+                    except socket.timeout:
+                        continue # check self.running
+                    except socket.error as e:
+                        print("Socket error:", e)
+                        break 
                         
                 s.close()
                 self.connected = False
-                self.log_message.emit("Disconnected. Retrying...")
-                time.sleep(3)
+                if self.running:
+                    self.log_message.emit("Disconnected. Retrying...")
+                    time.sleep(3)
                 
-            except Exception:
-                # Connection failed
+            except Exception as e:
+                print(e)
                 self.connected = False
-                # Do not spam log. Only log if this is a "new" failure or periodically?
-                # For now, just wait silently to avoid pollution
                 time.sleep(3)
 
     def stop(self):
