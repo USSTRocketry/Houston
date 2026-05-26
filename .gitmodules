@@ -1,0 +1,6 @@
+[submodule "RadioComms/Lib/Turtleford"]
+	path = RadioComms/Lib/Turtleford
+	url = git@github.com:USSTRocketry/Turtleford.git
+[submodule "RadioComms/Lib/Carrot-River"]
+	path = RadioComms/Lib/Carrot-River
+	url = git@github.com:USSTRocketry/Carrot-River.git

@@ -1,0 +1,66 @@
+# Alignment
+AlignAfterOpenBracket: Align
+AlignArrayOfStructures: Right
+AlignConsecutiveAssignments: AcrossComments
+AlignConsecutiveBitFields: AcrossComments
+AlignConsecutiveMacros: AcrossComments
+AlignEscapedNewlines: Left
+AlignOperands: Align
+
+# Comments
+ReflowComments: true
+
+# Short blocks and functions
+AllowShortBlocksOnASingleLine: Always
+AllowShortFunctionsOnASingleLine: All
+AllowShortIfStatementsOnASingleLine: AllIfsAndElse
+
+# Line breaking / braces
+AlwaysBreakTemplateDeclarations: Yes
+BreakBeforeBraces: Allman
+BreakConstructorInitializers: AfterColon
+BreakInheritanceList: AfterComma
+
+# Bin packing
+BinPackArguments: false
+BinPackParameters: false
+
+# Bitfields and spacing
+BitFieldColonSpacing: Both
+PointerAlignment: Left
+ReferenceAlignment: Pointer
+SpaceAfterCStyleCast: true
+SpaceBeforeAssignmentOperators: true
+SpaceBeforeCpp11BracedList: true
+Cpp11BracedListStyle: true
+
+# Indentation
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+IndentCaseLabels: true
+IndentGotoLabels: false
+IndentExternBlock: NoIndent
+IndentPPDirectives: BeforeHash
+IndentWrappedFunctionNames: true
+LambdaBodyIndentation: Signature
+NamespaceIndentation: None
+AccessModifierOffset: -4
+
+# Column / formatting
+ColumnLimit: 120
+EmptyLineBeforeAccessModifier: Always
+FixNamespaceComments: true
+PackConstructorInitializers: NextLine
+
+# Includes / using
+SortIncludes: Never
+SortUsingDeclarations: true
+
+# Brace wrapping
+BraceWrapping:
+  AfterCaseLabel: true
+  BeforeCatch: true
+  BeforeElse: true
+  BeforeLambdaBody: true
+  BeforeWhile: true
