@@ -16,7 +16,7 @@ import json
 from ProtoCodec import ProtoDecode
 
 # Network Configuration
-HOST = '239.255.0.1' # Multicast IP
+HOST = '192.168.4.1' # Multicast IP
 PORT = 33333
 
 # Dark Mode Theme
@@ -88,30 +88,37 @@ class NetworkReceiver(QThread):
         self.connected = False
 
     def run(self):
-        self.log_message.emit(f"Binding to Multicast {HOST}:{PORT}...")
+        self.log_message.emit(f"Connecting to ESP32 TCP Server at {HOST}:{PORT}...")
         
         while self.running:
             try:
-                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
-                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                s.bind(("", PORT))
+                # Set up as a TCP Client (SOCK_STREAM)
+                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                s.settimeout(5.0) # 5 second timeout for connection attempts
                 
-                group = socket.inet_aton(HOST)
-                mreq = struct.pack("4sL", group, socket.INADDR_ANY)
-                s.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
-                s.settimeout(1.0) # 1 sec timeout so we check self.running
-
+                s.connect((HOST, PORT))
                 self.connected = True
-                self.log_message.emit("Listening to UDP Telemetry Multicast")
+                self.log_message.emit("Connected to ESP32 TCP Telemetry Stream")
+                
+                # Lower timeout for reading so we can check self.running frequently
+                s.settimeout(1.0) 
                 
                 while self.running:
                     try:
-                        data, addr = s.recvfrom(2048)
+                        # Read from the TCP stream. 2048 bytes is plenty for LoRa payloads
+                        data = s.recv(2048) 
+                        
+                        if not data:
+                            self.log_message.emit("Connection closed by ESP32.")
+                            break # Break inner loop to reconnect
+                            
+                        # Pass the raw bytes to your protobuf decoder
                         decoded_dict = ProtoDecode(data)
                         if decoded_dict:
                             self.new_data.emit(decoded_dict)
+                            
                     except socket.timeout:
-                        continue # check self.running
+                        continue # Timeout just lets us loop back and check self.running
                     except socket.error as e:
                         print("Socket error:", e)
                         break 
@@ -119,11 +126,11 @@ class NetworkReceiver(QThread):
                 s.close()
                 self.connected = False
                 if self.running:
-                    self.log_message.emit("Disconnected. Retrying...")
+                    self.log_message.emit("Disconnected. Retrying in 3s...")
                     time.sleep(3)
-                
+            
             except Exception as e:
-                print(e)
+                # Connection failed (e.g., ESP32 is off or RPi not on the right WiFi)
                 self.connected = False
                 time.sleep(3)
 
