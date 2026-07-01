@@ -1,4 +1,8 @@
+import os
 import sys
+if sys.platform.startswith('linux'):
+    os.environ["QT_QPA_PLATFORM"] = "xcb"
+
 import struct
 import time
 import random
@@ -17,7 +21,7 @@ from ProtoCodec import ProtoDecode
 
 # Network Configuration
 HOST = '192.168.4.1' # Multicast IP
-PORT = 33333
+PORT = 3333
 
 # Dark Mode Theme
 DARK_STYLESHEET = """
