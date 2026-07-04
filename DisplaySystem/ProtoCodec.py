@@ -11,7 +11,7 @@ def ProtoDecode(buffer: bytes):
     if msg.HasField("in_flight_data"):
         fd = msg.in_flight_data
         return {
-            "timestamp": fd.timestamp_ms / 1000.0 if fd.timestamp_ms else 0, # Convert ms to s
+            "timestamp": msg.timestamp / 1000.0 if msg.timestamp else 0, # Convert ms to s
             "bmp_temp": fd.bmp_data.temperature,
             "pressure": fd.bmp_data.pressure,
             "bmp_alt": fd.bmp_data.altitude,
@@ -33,7 +33,7 @@ def ProtoDecode(buffer: bytes):
             "gps_speed": 0,
             "gps_angle": 0,
             "state": 1, # Just simulate boost state to see colors change
-            "flight_time": fd.timestamp_ms / 1000.0 if fd.timestamp_ms else 0
+            "flight_time": msg.timestamp / 1000.0 if msg.timestamp else 0
         }
     
     # Return empty dict if not in_flight_data or log message
