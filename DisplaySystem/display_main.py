@@ -102,6 +102,7 @@ class NetworkReceiver(QThread):
         self.log_message.emit(f"Connecting to ESP32 TCP Server at {HOST}:{PORT}...")
         
         while self.running:
+            s = None
             try:
                 # Set up as a TCP Client (SOCK_STREAM)
                 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -131,18 +132,20 @@ class NetworkReceiver(QThread):
                     except socket.timeout:
                         continue # Timeout just lets us loop back and check self.running
                     except socket.error as e:
-                        print("Socket error:", e)
+                        self.log_message.emit(f"Socket read error: {e}")
                         break 
                         
-                s.close()
-                self.connected = False
-                if self.running:
-                    self.log_message.emit("Disconnected. Retrying in 3s...")
-                    time.sleep(3)
-            
             except Exception as e:
-                # Connection failed (e.g., ESP32 is off or RPi not on the right WiFi)
+                self.log_message.emit(f"Connection failed: {e}. Retrying in 3s...")
+            finally:
+                if s:
+                    try:
+                        s.close()
+                    except:
+                        pass
                 self.connected = False
+                
+            if self.running:
                 time.sleep(3)
 
     def stop(self):
