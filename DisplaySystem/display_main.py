@@ -19,6 +19,13 @@ import socket
 import json
 from ProtoCodec import ProtoDecode
 
+# Tell PyOpenGL to use the modern EGL driver context instead of X11/GLX
+os.environ["PYOPENGL_PLATFORM"] = "egl"
+
+# Force Qt to match this rendering standard
+os.environ["QT_XCB_GL_INTEGRATION"] = "xcb_egl"
+
+
 # Network Configuration
 HOST = '192.168.4.1' # Multicast IP
 PORT = 3333
