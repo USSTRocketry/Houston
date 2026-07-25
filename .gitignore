@@ -1,1 +1,8 @@
-venv/*
+venv/
+__pycache__
+DisplaySystem/__pycache__
+DisplaySystem/proto/__pycache__
+Houston/__pycache__
+Houston/DisplaySystem/__pycache__
+Houston/DisplaySystem/proto/__pycache__
+Houston/DisplaySystem/venv
