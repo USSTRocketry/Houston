@@ -17,7 +17,7 @@ import pyqtgraph.opengl as gl
 import numpy as np
 import socket
 import json
-from ProtoCodec import ProtoDecode
+from ProtoCodec import ProtoDecode, encode_command
 
 # Tell PyOpenGL to use the modern EGL driver context instead of X11/GLX
 os.environ["PYOPENGL_PLATFORM"] = "egl"
@@ -97,6 +97,20 @@ class NetworkReceiver(QThread):
         super().__init__()
         self.running = True
         self.connected = False
+        self.active_socket = None
+
+    def send_bytes(self, data: bytes):
+        if self.connected and self.active_socket:
+            try:
+                self.active_socket.sendall(data)
+                self.log_message.emit(f"Sent TCP command ({len(data)} bytes).")
+                return True
+            except Exception as e:
+                self.log_message.emit(f"Failed to send TCP command: {e}")
+                return False
+        else:
+            self.log_message.emit("Cannot send command: TCP stream not connected.")
+            return False
 
     def run(self):
         self.log_message.emit(f"Connecting to ESP32 TCP Server at {HOST}:{PORT}...")
@@ -109,6 +123,7 @@ class NetworkReceiver(QThread):
                 s.settimeout(5.0) # 5 second timeout for connection attempts
                 
                 s.connect((HOST, PORT))
+                self.active_socket = s
                 self.connected = True
                 self.log_message.emit("Connected to ESP32 TCP Telemetry Stream")
                 
@@ -144,6 +159,7 @@ class NetworkReceiver(QThread):
                     except:
                         pass
                 self.connected = False
+                self.active_socket = None
                 
             if self.running:
                 time.sleep(3)
@@ -541,6 +557,7 @@ class RocketOrientationWidget(QWidget):
         self.view.setCameraPosition(distance=15, elevation=el, azimuth=az)
         
     def set_orientation(self, pitch, roll, yaw):
+        # Reset transforms and re-apply initial local offsets
         self.body.resetTransform()
         self.body.translate(0, 0, -2.5)
         self.nose.resetTransform()
@@ -548,11 +565,12 @@ class RocketOrientationWidget(QWidget):
         self.tip_dot.resetTransform()
         self.tip_dot.translate(0, 0, self.tip_offset)
         
-        # Rotate
+        # Apply orientation rotation in world space (yaw around Z, pitch around X, roll around Y)
+        # Note: localToWorld transformation order when chaining item.rotate(...)
         for item in [self.body, self.nose, self.tip_dot]:
-            item.rotate(yaw, 0, 0, 1)
-            item.rotate(pitch, 1, 0, 0)
-            item.rotate(roll, 0, 1, 0)
+            item.rotate(yaw, 0, 0, 1, local=False)
+            item.rotate(pitch, 1, 0, 0, local=False)
+            item.rotate(roll, 0, 1, 0, local=False)
 
 class TelemetryTable(QTableWidget):
     def __init__(self):
@@ -665,11 +683,38 @@ class GroundStationWindow(QMainWindow):
         log_ly = QVBoxLayout()
         self.console_log = QTextEdit()
         self.console_log.setReadOnly(True)
-        self.console_log.setMaximumHeight(400) 
+        self.console_log.setMaximumHeight(300) 
         log_ly.addWidget(self.console_log)
         log_group.setLayout(log_ly)
         left_layout.addWidget(log_group)
         
+        # Camera & Payload Commands
+        cmd_group = QGroupBox("Camera & Payload Control")
+        cmd_ly = QGridLayout()
+        
+        btn_cam_on = QPushButton("Camera ON")
+        btn_cam_on.setStyleSheet("background-color: #2e7d32; font-weight: bold; font-size: 13px; padding: 6px;")
+        btn_cam_on.clicked.connect(lambda: self.send_command(2, "CAMERA ON"))
+
+        btn_cam_off = QPushButton("Camera OFF")
+        btn_cam_off.setStyleSheet("background-color: #c62828; font-weight: bold; font-size: 13px; padding: 6px;")
+        btn_cam_off.clicked.connect(lambda: self.send_command(3, "CAMERA OFF"))
+
+        btn_rec_start = QPushButton("Start Rec")
+        btn_rec_start.setStyleSheet("background-color: #1565c0; font-weight: bold; font-size: 13px; padding: 6px;")
+        btn_rec_start.clicked.connect(lambda: self.send_command(4, "START RECORDING"))
+
+        btn_rec_stop = QPushButton("Stop Rec")
+        btn_rec_stop.setStyleSheet("background-color: #d84315; font-weight: bold; font-size: 13px; padding: 6px;")
+        btn_rec_stop.clicked.connect(lambda: self.send_command(5, "STOP RECORDING"))
+
+        cmd_ly.addWidget(btn_cam_on, 0, 0)
+        cmd_ly.addWidget(btn_cam_off, 0, 1)
+        cmd_ly.addWidget(btn_rec_start, 1, 0)
+        cmd_ly.addWidget(btn_rec_stop, 1, 1)
+        cmd_group.setLayout(cmd_ly)
+        left_layout.addWidget(cmd_group)
+
         # Table
         table_group = QGroupBox("Raw Telemetry")
         table_ly = QVBoxLayout()
@@ -884,8 +929,9 @@ class GroundStationWindow(QMainWindow):
         self.flight_view3d.update_path(lat, lon, gps_alt, state) 
         
         # Update Orientation
-        pitch = math.degrees(math.atan2(accel_x, math.sqrt(accel_y**2 + accel_z**2)))
-        roll = math.degrees(math.atan2(accel_y, math.sqrt(accel_x**2 + accel_z**2)))
+        # Using atan2 with accel_z allows tracking full 360-degree tilt/inversion
+        pitch = math.degrees(math.atan2(accel_x, accel_z))
+        roll = math.degrees(math.atan2(accel_y, accel_z))
         yaw = angle 
         
         self.rocket_view.set_orientation(pitch, roll, -yaw) 
@@ -895,8 +941,15 @@ class GroundStationWindow(QMainWindow):
         sb = self.console_log.verticalScrollBar()
         sb.setValue(sb.maximum())
 
+    def send_command(self, cmd_id: int, cmd_name: str):
+        now_ms = int((time.time() - self.program_start_time) * 1000)
+        packet = encode_command(cmd_id, now_ms)
+        self.log(f"COMMAND SENT: [{cmd_name}] (ID: {cmd_id})")
+        self.data_thread.send_bytes(packet)
+
     def on_abort(self):
         self.log("!!! ABORT COMMAND SENT !!!")
+        self.send_command(1, "ABORT")
 
     def scale_graphs_to_flight(self):
         # Data rate is approx 2 Hz (0.5s period)
