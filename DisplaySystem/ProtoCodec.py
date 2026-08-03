@@ -1,10 +1,17 @@
 import sys
 import os
-proto_dir = os.path.join(os.path.dirname(__file__), "proto")
+current_dir = os.path.dirname(os.path.abspath(__file__))
+proto_dir = os.path.join(current_dir, "proto")
 if proto_dir not in sys.path:
     sys.path.insert(0, proto_dir)
+if current_dir not in sys.path:
+    sys.path.insert(0, current_dir)
 
-from proto.ProtoMain_pb2 import MainMessage
+try:
+    import ProtoMain_pb2
+    from ProtoMain_pb2 import MainMessage
+except ImportError:
+    from proto.ProtoMain_pb2 import MainMessage
 
 def ProtoDecode(buffer: bytes):
     msg = MainMessage()

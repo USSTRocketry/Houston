@@ -1,5 +1,14 @@
 import os
 import sys
+
+# Ensure display_main directory and proto directory are in sys.path for RPi5/Linux
+current_dir = os.path.dirname(os.path.abspath(__file__))
+proto_dir = os.path.join(current_dir, "proto")
+if proto_dir not in sys.path:
+    sys.path.insert(0, proto_dir)
+if current_dir not in sys.path:
+    sys.path.insert(0, current_dir)
+
 if sys.platform.startswith('linux'):
     os.environ["QT_QPA_PLATFORM"] = "xcb"
 
