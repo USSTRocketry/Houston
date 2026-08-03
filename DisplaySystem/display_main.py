@@ -929,8 +929,10 @@ class GroundStationWindow(QMainWindow):
         self.flight_view3d.update_path(lat, lon, gps_alt, state) 
         
         # Update Orientation
-        # Using atan2 with accel_z allows tracking full 360-degree tilt/inversion
-        pitch = math.degrees(math.atan2(accel_x, accel_z))
+        # Computing pitch = atan2(accel_x, sqrt(accel_y^2 + accel_z^2)) and roll = atan2(accel_y, accel_z)
+        # properly handles full 360-degree inversion without pitch & roll cancelling each other out.
+        denom = math.sqrt(accel_y**2 + accel_z**2)
+        pitch = math.degrees(math.atan2(accel_x, denom)) if denom != 0 else 0.0
         roll = math.degrees(math.atan2(accel_y, accel_z))
         yaw = angle 
         
