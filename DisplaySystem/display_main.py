@@ -724,6 +724,31 @@ class GroundStationWindow(QMainWindow):
         cmd_group.setLayout(cmd_ly)
         left_layout.addWidget(cmd_group)
 
+        # SD Card Logging Commands & Status
+        sd_group = QGroupBox("SD Card Logging Control")
+        sd_ly = QVBoxLayout()
+
+        self.sd_log_status_label = QLabel("SD Logging: ENABLED")
+        self.sd_log_status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.sd_log_status_label.setStyleSheet("font-size: 13px; font-weight: bold; color: #4caf50; padding: 4px;")
+        sd_ly.addWidget(self.sd_log_status_label)
+
+        sd_btn_ly = QHBoxLayout()
+        btn_sd_on = QPushButton("SD Log ON")
+        btn_sd_on.setStyleSheet("background-color: #2e7d32; font-weight: bold; font-size: 13px; padding: 6px;")
+        btn_sd_on.clicked.connect(lambda: self.set_sd_logging(True))
+
+        btn_sd_off = QPushButton("SD Log OFF")
+        btn_sd_off.setStyleSheet("background-color: #c62828; font-weight: bold; font-size: 13px; padding: 6px;")
+        btn_sd_off.clicked.connect(lambda: self.set_sd_logging(False))
+
+        sd_btn_ly.addWidget(btn_sd_on)
+        sd_btn_ly.addWidget(btn_sd_off)
+        sd_ly.addLayout(sd_btn_ly)
+
+        sd_group.setLayout(sd_ly)
+        left_layout.addWidget(sd_group)
+
         # Table
         table_group = QGroupBox("Raw Telemetry")
         table_ly = QVBoxLayout()
@@ -957,6 +982,16 @@ class GroundStationWindow(QMainWindow):
         packet = encode_command(cmd_id, now_ms)
         self.log(f"COMMAND SENT: [{cmd_name}] (ID: {cmd_id})")
         self.data_thread.send_bytes(packet)
+
+    def set_sd_logging(self, enable: bool):
+        if enable:
+            self.send_command(6, "SD LOG ON")
+            self.sd_log_status_label.setText("SD Logging: ENABLED")
+            self.sd_log_status_label.setStyleSheet("font-size: 13px; font-weight: bold; color: #4caf50; padding: 4px;")
+        else:
+            self.send_command(7, "SD LOG OFF")
+            self.sd_log_status_label.setText("SD Logging: DISABLED")
+            self.sd_log_status_label.setStyleSheet("font-size: 13px; font-weight: bold; color: #f44336; padding: 4px;")
 
     def on_abort(self):
         self.log("!!! ABORT COMMAND SENT !!!")
