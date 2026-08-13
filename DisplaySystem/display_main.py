@@ -625,6 +625,10 @@ class GroundStationWindow(QMainWindow):
         self.blink_counter = 0
         self.normal_state_color = "green"
         self.last_packet_time = 0.0 # For gap detection
+        self.pitch_offset = 0.0
+        self.roll_offset = 0.0
+        self.current_pitch = 0.0
+        self.current_roll = 0.0
         
         # Main layout container
         main_widget = QWidget()
@@ -769,6 +773,12 @@ class GroundStationWindow(QMainWindow):
         
         orient_group = QGroupBox("Rocket Orientation")
         orient_ly = QVBoxLayout()
+        
+        self.btn_calibrate_orient = QPushButton("Calibrate Orientation")
+        self.btn_calibrate_orient.setStyleSheet("background-color: #f39c12; font-weight: bold; font-size: 13px; padding: 4px; color: black;")
+        self.btn_calibrate_orient.clicked.connect(self.calibrate_orientation)
+        orient_ly.addWidget(self.btn_calibrate_orient)
+        
         self.rocket_view = RocketOrientationWidget()
         orient_ly.addWidget(self.rocket_view)
         orient_group.setLayout(orient_ly)
@@ -966,11 +976,22 @@ class GroundStationWindow(QMainWindow):
         # Computing pitch = atan2(accel_x, sqrt(accel_y^2 + accel_z^2)) and roll = atan2(accel_y, accel_z)
         # properly handles full 360-degree inversion without pitch & roll cancelling each other out.
         denom = math.sqrt(accel_y**2 + accel_z**2)
-        pitch = math.degrees(math.atan2(accel_x, denom)) if denom != 0 else 0.0
-        roll = math.degrees(math.atan2(accel_y, accel_z))
+        raw_pitch = math.degrees(math.atan2(accel_x, denom)) if denom != 0 else 0.0
+        raw_roll = math.degrees(math.atan2(accel_y, accel_z))
+        
+        self.current_pitch = raw_pitch
+        self.current_roll = raw_roll
+        
+        pitch = raw_pitch - self.pitch_offset
+        roll = raw_roll - self.roll_offset
         yaw = angle 
         
         self.rocket_view.set_orientation(pitch, roll, -yaw) 
+
+    def calibrate_orientation(self):
+        self.pitch_offset = self.current_pitch
+        self.roll_offset = self.current_roll
+        self.log(f"Orientation Calibrated. Offsets -> Pitch: {self.pitch_offset:.2f}, Roll: {self.roll_offset:.2f}")
 
     def log(self, message):
         self.console_log.append(message)
