@@ -18,7 +18,8 @@ import random
 import math
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                              QHBoxLayout, QLabel, QTextEdit, QPushButton, QGridLayout,
-                             QGroupBox, QTableWidget, QTableWidgetItem, QHeaderView)
+                             QGroupBox, QTableWidget, QTableWidgetItem, QHeaderView,
+                             QLineEdit)
 from PyQt6.QtCore import QThread, pyqtSignal, Qt, QTimer, QDateTime
 from PyQt6.QtGui import QVector3D
 import pyqtgraph as pg
@@ -26,7 +27,8 @@ import pyqtgraph.opengl as gl
 import numpy as np
 import socket
 import json
-from ProtoCodec import ProtoDecode, encode_command
+from ProtoCodec import (ProtoDecode, encode_command, encode_switch_frequency,
+                         encode_ack, encode_interlink_frequency, SWITCH_RADIO_FREQUENCY_TAG)
 from themes import (get_stylesheet, get_qpalette, get_active_palette,
                      set_active_theme, toggle_theme, is_dark, DARK, LIGHT)
 
@@ -615,6 +617,14 @@ class GroundStationWindow(QMainWindow):
         self.roll_offset = 0.0
         self.current_pitch = 0.0
         self.current_roll = 0.0
+        self.pending_frequency = None
+        self.current_radio_frequency = 914.2
+        self.previous_radio_frequency = 914.2
+        self.awaiting_new_freq_telemetry = False
+        self.freq_watch_ignore_until = 0.0
+        self.freq_watch_timer = QTimer()
+        self.freq_watch_timer.setSingleShot(True)
+        self.freq_watch_timer.timeout.connect(self.on_freq_watch_timeout)
         
         # Main layout container
         main_widget = QWidget()
@@ -727,6 +737,33 @@ class GroundStationWindow(QMainWindow):
         cmd_ly.addWidget(btn_rec_stop, 1, 1)
         cmd_group.setLayout(cmd_ly)
         left_layout.addWidget(cmd_group)
+
+        # Radio frequency (Houston is master: rocket ack, then tell interlink over WiFi)
+        freq_group = QGroupBox("Radio Frequency")
+        freq_ly = QVBoxLayout()
+        self.freq_status_label = QLabel("Radio: 914.20 MHz")
+        self.freq_status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.freq_status_label.setStyleSheet("font-size: 13px; font-weight: bold; color: #4caf50; padding: 4px;")
+        freq_ly.addWidget(self.freq_status_label)
+
+        freq_row = QHBoxLayout()
+        self.freq_input = QLineEdit("914.2")
+        self.freq_input.setPlaceholderText("MHz")
+        freq_row.addWidget(self.freq_input)
+        freq_ly.addLayout(freq_row)
+
+        freq_btn_row = QHBoxLayout()
+        btn_change_freq = QPushButton("Change Freq")
+        btn_change_freq.setStyleSheet("background-color: #1565c0; font-weight: bold; font-size: 13px; padding: 6px; color: white;")
+        btn_change_freq.clicked.connect(self.request_frequency_change)
+        btn_gs_only = QPushButton("GS Only")
+        btn_gs_only.setStyleSheet("background-color: #ef6c00; font-weight: bold; font-size: 13px; padding: 6px; color: white;")
+        btn_gs_only.clicked.connect(self.force_gs_frequency)
+        freq_btn_row.addWidget(btn_change_freq)
+        freq_btn_row.addWidget(btn_gs_only)
+        freq_ly.addLayout(freq_btn_row)
+        freq_group.setLayout(freq_ly)
+        left_layout.addWidget(freq_group)
 
         # SD Card Logging Commands & Status
         sd_group = QGroupBox("SD Card Logging Control")
@@ -847,6 +884,15 @@ class GroundStationWindow(QMainWindow):
         self.state_label.setStyleSheet(f"font-size: 24px; font-weight: bold; color: {color};")
         
     def update_display(self, data):
+        if "ack" in data:
+            self.on_ack(data["ack"])
+            return
+        if "command" in data or "new_frequency" in data:
+            return
+
+        if self.awaiting_new_freq_telemetry and time.time() >= self.freq_watch_ignore_until:
+            self.confirm_new_frequency_from_packet()
+
         # Data is now a dict from JSON
         
         # Calculate Program Time (Session Time)
@@ -1004,6 +1050,81 @@ class GroundStationWindow(QMainWindow):
         packet = encode_command(cmd_id, now_ms)
         self.log(f"COMMAND SENT: [{cmd_name}] (ID: {cmd_id})")
         self.data_thread.send_bytes(packet)
+
+    def _parse_frequency_mhz(self):
+        try:
+            return float(self.freq_input.text().strip())
+        except ValueError:
+            self.log("FREQUENCY CHANGE FAILED: enter a number in MHz")
+            return None
+
+    def _set_freq_status(self, text, color):
+        self.freq_status_label.setText(text)
+        self.freq_status_label.setStyleSheet(f"font-size: 13px; font-weight: bold; color: {color}; padding: 4px;")
+
+    def request_frequency_change(self):
+        freq = self._parse_frequency_mhz()
+        if freq is None:
+            return
+        self.freq_watch_timer.stop()
+        self.awaiting_new_freq_telemetry = False
+        now_ms = int((time.time() - self.program_start_time) * 1000)
+        self.pending_frequency = freq
+        self._set_freq_status(f"Radio: waiting for rocket ack ({freq:.2f} MHz)", "#ffb300")
+        self.log(f"FREQUENCY CHANGE REQUESTED: {freq:.2f} MHz (waiting for rocket ack)")
+        self.data_thread.send_bytes(encode_switch_frequency(freq, now_ms))
+
+    def force_gs_frequency(self):
+        freq = self._parse_frequency_mhz()
+        if freq is None:
+            return
+        self.freq_watch_timer.stop()
+        self.awaiting_new_freq_telemetry = False
+        self.pending_frequency = None
+        self.previous_radio_frequency = self.current_radio_frequency
+        self.current_radio_frequency = freq
+        self.data_thread.send_bytes(encode_interlink_frequency(freq))
+        self._set_freq_status(f"Radio: {freq:.2f} MHz (GS only)", "#ef6c00")
+        self.log(f"GS ONLY: interlink retuned to {freq:.2f} MHz (rocket not commanded)")
+
+    def on_ack(self, response_to):
+        if response_to != SWITCH_RADIO_FREQUENCY_TAG:
+            self.log(f"ACK received (tag {response_to})")
+            return
+        if self.pending_frequency is None:
+            self.log("ACK for frequency switch with no pending request")
+            return
+
+        freq = self.pending_frequency
+        now_ms = int((time.time() - self.program_start_time) * 1000)
+        self.log(f"ROCKET ACKED {freq:.2f} MHz. Confirming, then telling interlink to retune.")
+        self.data_thread.send_bytes(encode_ack(SWITCH_RADIO_FREQUENCY_TAG, now_ms))
+        self.data_thread.send_bytes(encode_interlink_frequency(freq))
+        self.previous_radio_frequency = self.current_radio_frequency
+        self.current_radio_frequency = freq
+        self.pending_frequency = None
+        self.awaiting_new_freq_telemetry = True
+        self.freq_watch_ignore_until = time.time() + 2.0
+        self.freq_watch_timer.start(60_000)
+        self._set_freq_status(f"Radio: {freq:.2f} MHz (waiting for packet)", "#ffb300")
+        self.log(f"Watching for telemetry on {freq:.2f} MHz. Fallback to {self.previous_radio_frequency:.2f} MHz in 60s if none arrives.")
+
+    def confirm_new_frequency_from_packet(self):
+        self.awaiting_new_freq_telemetry = False
+        self.freq_watch_timer.stop()
+        freq = self.current_radio_frequency
+        self._set_freq_status(f"Radio: {freq:.2f} MHz", "#4caf50")
+        self.log(f"Packet received on {freq:.2f} MHz. Staying on new frequency.")
+
+    def on_freq_watch_timeout(self):
+        if not self.awaiting_new_freq_telemetry:
+            return
+        self.awaiting_new_freq_telemetry = False
+        old = self.previous_radio_frequency
+        self.data_thread.send_bytes(encode_interlink_frequency(old))
+        self.current_radio_frequency = old
+        self._set_freq_status(f"Radio: {old:.2f} MHz (fallback)", "#f44336")
+        self.log(f"No packets for 60s after frequency change. Interlink fell back to {old:.2f} MHz. Retry Change Freq.")
 
     def set_sd_logging(self, enable: bool):
         if enable:

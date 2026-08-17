@@ -1,5 +1,7 @@
 import sys
 import os
+import struct
+
 current_dir = os.path.dirname(os.path.abspath(__file__))
 proto_dir = os.path.join(current_dir, "proto")
 if proto_dir not in sys.path:
@@ -12,6 +14,11 @@ try:
     from ProtoMain_pb2 import MainMessage
 except ImportError:
     from proto.ProtoMain_pb2 import MainMessage
+
+# MainMessage.switch_radio_frequency field number; Ack.response_to_which_message uses this tag.
+SWITCH_RADIO_FREQUENCY_TAG = 3
+# WiFi-only command for Radisson: magic + little-endian float32 MHz. Not forwarded over LoRa.
+INTERLINK_FREQ_MAGIC = b"ILFQ"
 
 def ProtoDecode(buffer: bytes):
     msg = MainMessage()
@@ -54,6 +61,16 @@ def ProtoDecode(buffer: bytes):
             "command": msg.command_msg.command
         }
 
+    if msg.HasField("ack"):
+        return {
+            "ack": msg.ack.response_to_which_message
+        }
+
+    if msg.HasField("switch_radio_frequency"):
+        return {
+            "new_frequency": msg.switch_radio_frequency.new_frequency
+        }
+
     # Return empty dict if not in_flight_data or log message
     return {}
 
@@ -79,4 +96,22 @@ def encode_command(command_id: int, timestamp_ms: int = 0) -> bytes:
     cmd_field = bytes([0x42, len(submsg)]) + submsg
 
     return ts_field + cmd_field
+
+
+def encode_switch_frequency(frequency_mhz: float, timestamp_ms: int = 0) -> bytes:
+    msg = MainMessage()
+    msg.timestamp = timestamp_ms
+    msg.switch_radio_frequency.new_frequency = frequency_mhz
+    return msg.SerializeToString()
+
+
+def encode_ack(response_to_which_message: int, timestamp_ms: int = 0) -> bytes:
+    msg = MainMessage()
+    msg.timestamp = timestamp_ms
+    msg.ack.response_to_which_message = response_to_which_message
+    return msg.SerializeToString()
+
+
+def encode_interlink_frequency(frequency_mhz: float) -> bytes:
+    return INTERLINK_FREQ_MAGIC + struct.pack("<f", frequency_mhz)
 
