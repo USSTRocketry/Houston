@@ -27,6 +27,8 @@ import numpy as np
 import socket
 import json
 from ProtoCodec import ProtoDecode, encode_command
+from themes import (get_stylesheet, get_qpalette, get_active_palette,
+                     set_active_theme, toggle_theme, is_dark, DARK, LIGHT)
 
 # Tell PyOpenGL to use the modern EGL driver context instead of X11/GLX
 os.environ["PYOPENGL_PLATFORM"] = "egl"
@@ -39,63 +41,17 @@ os.environ["QT_XCB_GL_INTEGRATION"] = "xcb_egl"
 HOST = '192.168.4.1' # Multicast IP
 PORT = 3333
 
-# Dark Mode Theme
-DARK_STYLESHEET = """
-QMainWindow, QWidget {
-    background-color: #2b2b2b;
-    color: #e0e0e0;
-    font-family: 'Segoe UI', sans-serif;
-}
-QGroupBox {
-    border: 2px solid #3e3e3e;
-    border-radius: 6px;
-    margin-top: 1.5em;
-    font-weight: bold;
-    color: #ffd700; /* Gold accent for titles */
-}
-QGroupBox::title {
-    subcontrol-origin: margin;
-    left: 10px;
-    padding: 0 5px;
-}
-QPushButton {
-    background-color: #3e3e3e;
-    border: 1px solid #555;
-    border-radius: 4px;
-    padding: 5px;
-    color: white;
-}
-QPushButton:hover {
-    background-color: #4e4e4e;
-    border: 1px solid #777;
-}
-QPushButton:pressed {
-    background-color: #222;
-}
-QTableWidget {
-    background-color: #1e1e1e;
-    gridline-color: #333;
-    color: #e0e0e0;
-    border: 1px solid #3e3e3e;
-}
-QHeaderView::section {
-    background-color: #333;
-    color: white;
-    padding: 4px;
-    border: 1px solid #444;
-}
-QTextEdit {
-    background-color: #1e1e1e;
-    color: #00ff00; /* Console like text */
-    border: 1px solid #3e3e3e;
-    font-family: 'Consolas', monospace;
-}
-QLabel {
-    color: #e0e0e0;
-}
-"""
+# Stylesheet is now generated dynamically from themes.py
 
 # Data Structure Definition
+
+
+def _update_legend_text_color(legend, color):
+    """Force legend labels to re-render with a new text color."""
+    legend.opts['labelTextColor'] = pg.mkColor(color)
+    for sample, label in legend.items:
+        label.setAttr('color', color)
+        label.setText(label.text, color=color)
 
 
 class NetworkReceiver(QThread):
@@ -181,11 +137,18 @@ class ScrollingPlot(QWidget):
     def __init__(self, title, xlabel, ylabel, y_range=None, threshold=None):
         super().__init__()
         self.layout = QVBoxLayout(self)
+        p = get_active_palette()
         self.plot_widget = pg.PlotWidget(title=title)
+        self.plot_widget.setBackground(p['plot_bg'])
+        self.plot_widget.getAxis('left').setPen(pg.mkPen(color=p['plot_fg'], width=1))
+        self.plot_widget.getAxis('bottom').setPen(pg.mkPen(color=p['plot_fg'], width=1))
+        self.plot_widget.getAxis('left').setTextPen(p['plot_fg'])
+        self.plot_widget.getAxis('bottom').setTextPen(p['plot_fg'])
         self.plot_widget.setLabel('left', ylabel)
         self.plot_widget.setLabel('bottom', xlabel)
         self.plot_widget.showGrid(x=True, y=True)
-        self.plot_widget.addLegend() # Add Legend
+        legend = self.plot_widget.addLegend()
+        _update_legend_text_color(legend, p['plot_fg'])
         if y_range:
             self.plot_widget.setYRange(*y_range)
         
@@ -198,12 +161,11 @@ class ScrollingPlot(QWidget):
 
         # Add infinite line for threshold
         if threshold is not None:
-            line = pg.InfiniteLine(pos=threshold, angle=0, pen=pg.mkPen('r', width=1, style=Qt.PenStyle.DashLine), name='Threshold')
+            line = pg.InfiniteLine(pos=threshold, angle=0, pen=pg.mkPen('r', width=2, style=Qt.PenStyle.DashLine), name='Threshold')
             self.plot_widget.addItem(line)
             
     def add_curve(self, name, color):
-        # Increased line width to 2 as requested
-        curve = self.plot_widget.plot(pen=pg.mkPen(color, width=2), name=name)
+        curve = self.plot_widget.plot(pen=pg.mkPen(color, width=3), name=name)
         self.curves.append(curve)
         self.y_data.append([])
         
@@ -251,14 +213,16 @@ class GPSDisplayWidget(QWidget):
         layout = QVBoxLayout(self)
         layout.setSpacing(5)
         
-        title = QLabel("GPS COORDINATES")
-        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title.setStyleSheet("font-weight: bold; font-size: 14px; color: #e0e0e0;")
-        layout.addWidget(title)
+        self.title = QLabel("GPS COORDINATES")
+        self.title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        p = get_active_palette()
+        self.title.setStyleSheet(f"font-weight: bold; font-size: 14px; color: {p['text']};")
+        layout.addWidget(self.title)
         
         self.val_label = QLabel("Lat: --\nLon: -")
         self.val_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.val_label.setStyleSheet("font-size: 24px; font-weight: bold; color: gold; border: 2px solid #555; border-radius: 5px; padding: 10px; background-color: #1e1e1e;")
+        p = get_active_palette()
+        self.val_label.setStyleSheet(f"font-size: 24px; font-weight: bold; color: gold; border: 2px solid {p['border_light']}; border-radius: 5px; padding: 10px; background-color: {p['bg_panel']};")
         layout.addWidget(self.val_label)
 
     def update_gps(self, lat, lon, alt):
@@ -268,20 +232,27 @@ class GroundTrackWidget(QWidget):
     def __init__(self):
         super().__init__()
         layout = QVBoxLayout(self)
+        p = get_active_palette()
         self.plot = pg.PlotWidget(title="Ground Track (2D)")
+        self.plot.setBackground(p['plot_bg'])
+        self.plot.getAxis('left').setPen(pg.mkPen(color=p['plot_fg'], width=1))
+        self.plot.getAxis('bottom').setPen(pg.mkPen(color=p['plot_fg'], width=1))
+        self.plot.getAxis('left').setTextPen(p['plot_fg'])
+        self.plot.getAxis('bottom').setTextPen(p['plot_fg'])
         self.plot.setLabel('left', "Latitude")
         self.plot.setLabel('bottom', "Longitude")
         self.plot.showGrid(x=True, y=True)
         self.plot.setAspectLocked(True)
-        self.plot.addLegend()
+        legend = self.plot.addLegend()
+        _update_legend_text_color(legend, p['plot_fg'])
         layout.addWidget(self.plot)
         
-        self.path_curve = self.plot.plot(pen=pg.mkPen('c', width=3), name='Path')
+        self.path_curve = self.plot.plot(pen=pg.mkPen('c', width=4), name='Path')
         
-        self.start_scatter = pg.ScatterPlotItem(size=10, pen=pg.mkPen(None), brush=pg.mkBrush(0, 255, 0, 255), name='Start')
+        self.start_scatter = pg.ScatterPlotItem(size=14, pen=pg.mkPen(None), brush=pg.mkBrush(0, 255, 0, 255), name='Start')
         self.plot.addItem(self.start_scatter)
         
-        self.current_scatter = pg.ScatterPlotItem(size=10, pen=pg.mkPen(None), brush=pg.mkBrush(255, 0, 0, 255), name='Current')
+        self.current_scatter = pg.ScatterPlotItem(size=14, pen=pg.mkPen(None), brush=pg.mkBrush(255, 0, 0, 255), name='Current')
         self.plot.addItem(self.current_scatter)
         
         self.lats = []
@@ -320,7 +291,8 @@ class FlightPathWidget(QWidget):
         
         # 1. Legend - Single Line
         legend = QLabel("Z-axis: 500m | Green:Asc | Red:Dsc")
-        legend.setStyleSheet("color: white; font-weight: bold; background-color: rgba(0,0,0,100); padding: 1px; font-size: 10px;")
+        p = get_active_palette()
+        legend.setStyleSheet(f"color: {p['text']}; font-weight: bold; background-color: rgba({','.join(str(int(c*255)) for c in p['gl_bg'][:3])},180); padding: 1px; font-size: 10px;")
         legend.setFixedHeight(15)
         btn_layout.addWidget(legend)
         
@@ -384,7 +356,8 @@ class FlightPathWidget(QWidget):
         # 4. Reset Camera
         btn_reset = QPushButton("Reset")
         btn_reset.setFixedSize(40, 20)
-        btn_reset.setStyleSheet("background-color: #444; color: white; font-size: 9px; padding: 0px;")
+        p = get_active_palette()
+        btn_reset.setStyleSheet(f"background-color: {p['bg_button']}; color: {p['text_button']}; font-size: 9px; padding: 0px;")
         btn_reset.clicked.connect(self.reset_camera)
         btn_layout.addWidget(btn_reset)
         
@@ -393,6 +366,8 @@ class FlightPathWidget(QWidget):
         layout.addWidget(btn_container)
         
         self.view = gl.GLViewWidget()
+        p = get_active_palette()
+        self.view.setBackgroundColor(p['gl_bg'])
         self.reset_camera() 
         self.opts = self.view.opts 
         self.opts['distance'] = 2000
@@ -410,9 +385,15 @@ class FlightPathWidget(QWidget):
         
         # Labels for axes
         try:
+            p = get_active_palette()
+            gl_text_color = p['gl_text']
+            gl_tick_color = p['gl_grid']
+            self._gl_text_items = []
+            self._gl_tick_items = []
             def add_lbl(pos, txt):
-                t = gl.GLTextItem(pos=pos, text=txt, color=(1,1,1,1))
+                t = gl.GLTextItem(pos=pos, text=txt, color=gl_text_color)
                 self.view.addItem(t)
+                self._gl_text_items.append(t)
 
             add_lbl([0, 2500, 0], 'N')
             add_lbl([0, -2500, 0], 'S')
@@ -422,10 +403,12 @@ class FlightPathWidget(QWidget):
             # Alt Markers on Z axis
             for z in range(0, 5001, 500):
                 add_lbl([0, 0, z], f"{z}m")
-                tick = gl.GLLinePlotItem(pos=np.array([[-100, 0, z], [100, 0, z]]), color=(0.5, 0.5, 0.5, 1), width=1)
+                tick = gl.GLLinePlotItem(pos=np.array([[-100, 0, z], [100, 0, z]]), color=gl_tick_color, width=1)
                 self.view.addItem(tick)
-                tick2 = gl.GLLinePlotItem(pos=np.array([[0, -100, z], [0, 100, z]]), color=(0.5, 0.5, 0.5, 1), width=1)
+                self._gl_tick_items.append(tick)
+                tick2 = gl.GLLinePlotItem(pos=np.array([[0, -100, z], [0, 100, z]]), color=gl_tick_color, width=1)
                 self.view.addItem(tick2)
+                self._gl_tick_items.append(tick2)
 
         except:
             print("GLTextItem not available or error adding labels")
@@ -498,7 +481,8 @@ class RocketOrientationWidget(QWidget):
         
         # Legend for Directions - Smaller
         legend = QLabel("Red=N | Green=E | Blue=Up | Yellow=W | Purple=S")
-        legend.setStyleSheet("color: white; font-weight: bold; background-color: rgba(0,0,0,100); padding: 1px; font-size: 9px;") 
+        p = get_active_palette()
+        legend.setStyleSheet(f"color: {p['text']}; font-weight: bold; background-color: rgba({','.join(str(int(c*255)) for c in p['gl_bg'][:3])},180); padding: 1px; font-size: 9px;") 
         legend.setFixedHeight(15) 
         layout.addWidget(legend)
         
@@ -519,6 +503,8 @@ class RocketOrientationWidget(QWidget):
         layout.addLayout(btn_layout)
         
         self.view = gl.GLViewWidget()
+        p = get_active_palette()
+        self.view.setBackgroundColor(p['gl_bg'])
         self.view.setCameraPosition(distance=15, elevation=0, azimuth=-90)
         layout.addWidget(self.view)
         
@@ -646,23 +632,25 @@ class GroundStationWindow(QMainWindow):
         self.state_label = QLabel("STATE: IDLE")
         self.state_label.setStyleSheet("font-size: 24px; font-weight: bold; color: green;")
         
+        p = get_active_palette()
         self.total_time_label = QLabel("PROG: 0s")
-        self.total_time_label.setStyleSheet("font-size: 18px; font-weight: bold; color: #e0e0e0; background-color: #1e1e1e; padding: 5px;")
+        self.total_time_label.setStyleSheet(f"font-size: 18px; font-weight: bold; color: {p['text']}; background-color: {p['bg_panel']}; padding: 5px;")
         
         self.timer_label = QLabel("FLIGHT: 0.0s")
-        self.timer_label.setStyleSheet("font-size: 24px; font-weight: bold; color: white; background-color: #1e1e1e; padding: 5px;")
+        self.timer_label.setStyleSheet(f"font-size: 24px; font-weight: bold; color: {p['text']}; background-color: {p['bg_panel']}; padding: 5px;")
         
         self.real_time_label = QLabel("REAL: --:--:--")
-        self.real_time_label.setStyleSheet("font-size: 18px; font-weight: bold; color: #aaa; background-color: #1e1e1e; padding: 5px;")
+        self.real_time_label.setStyleSheet(f"font-size: 18px; font-weight: bold; color: {p['text_secondary']}; background-color: {p['bg_panel']}; padding: 5px;")
         
         self.t_zero_label = QLabel("T-NULL: --:--:--")
-        self.t_zero_label.setStyleSheet("font-size: 18px; font-weight: bold; color: #aaa; background-color: #1e1e1e; padding: 5px;")
+        self.t_zero_label.setStyleSheet(f"font-size: 18px; font-weight: bold; color: {p['text_secondary']}; background-color: {p['bg_panel']}; padding: 5px;")
 
         self.scale_btn = QPushButton("SCALE FLIGHT")
         self.scale_btn.setCheckable(True) # Toggle
-        self.scale_btn.setStyleSheet("""
-            QPushButton { background-color: #444; color: white; font-weight: bold; font-size: 16px; padding: 10px; }
-            QPushButton:checked { background-color: #004488; border: 2px solid #0088ff; }
+        p = get_active_palette()
+        self.scale_btn.setStyleSheet(f"""
+            QPushButton {{ background-color: {p['bg_button']}; color: {p['text_button']}; font-weight: bold; font-size: 16px; padding: 10px; }}
+            QPushButton:checked {{ background-color: #004488; border: 2px solid #0088ff; }}
         """)
         self.scale_btn.clicked.connect(self.scale_graphs_to_flight)
         
@@ -682,6 +670,17 @@ class GroundStationWindow(QMainWindow):
         self.header_layout.addStretch()
         self.header_layout.addWidget(self.scale_btn)
         self.header_layout.addSpacing(10)
+        
+        self.theme_btn = QPushButton("LIGHT MODE")
+        self.theme_btn.setCheckable(True)
+        p = get_active_palette()
+        self.theme_btn.setStyleSheet(f"""
+            QPushButton {{ background-color: {p['bg_button']}; color: {p['text_button']}; font-weight: bold; font-size: 14px; padding: 8px; }}
+        """)
+        self.theme_btn.clicked.connect(self.toggle_theme)
+        self.header_layout.addWidget(self.theme_btn)
+        self.header_layout.addSpacing(10)
+        
         self.header_layout.addWidget(self.abort_btn)
         
         self.layout.addLayout(self.header_layout, 0, 0, 1, 4)
@@ -705,20 +704,21 @@ class GroundStationWindow(QMainWindow):
         cmd_group = QGroupBox("Camera & Payload Control")
         cmd_ly = QGridLayout()
         
+        p = get_active_palette()
         btn_cam_on = QPushButton("Camera ON")
-        btn_cam_on.setStyleSheet("background-color: #2e7d32; font-weight: bold; font-size: 13px; padding: 6px;")
+        btn_cam_on.setStyleSheet(f"background-color: #2e7d32; font-weight: bold; font-size: 13px; padding: 6px; color: white;")
         btn_cam_on.clicked.connect(lambda: self.send_command(2, "CAMERA ON"))
 
         btn_cam_off = QPushButton("Camera OFF")
-        btn_cam_off.setStyleSheet("background-color: #c62828; font-weight: bold; font-size: 13px; padding: 6px;")
+        btn_cam_off.setStyleSheet(f"background-color: #c62828; font-weight: bold; font-size: 13px; padding: 6px; color: white;")
         btn_cam_off.clicked.connect(lambda: self.send_command(3, "CAMERA OFF"))
 
         btn_rec_start = QPushButton("Start Rec")
-        btn_rec_start.setStyleSheet("background-color: #1565c0; font-weight: bold; font-size: 13px; padding: 6px;")
+        btn_rec_start.setStyleSheet(f"background-color: #1565c0; font-weight: bold; font-size: 13px; padding: 6px; color: white;")
         btn_rec_start.clicked.connect(lambda: self.send_command(4, "START RECORDING"))
 
         btn_rec_stop = QPushButton("Stop Rec")
-        btn_rec_stop.setStyleSheet("background-color: #d84315; font-weight: bold; font-size: 13px; padding: 6px;")
+        btn_rec_stop.setStyleSheet(f"background-color: #d84315; font-weight: bold; font-size: 13px; padding: 6px; color: white;")
         btn_rec_stop.clicked.connect(lambda: self.send_command(5, "STOP RECORDING"))
 
         cmd_ly.addWidget(btn_cam_on, 0, 0)
@@ -739,11 +739,11 @@ class GroundStationWindow(QMainWindow):
 
         sd_btn_ly = QHBoxLayout()
         btn_sd_on = QPushButton("SD Log ON")
-        btn_sd_on.setStyleSheet("background-color: #2e7d32; font-weight: bold; font-size: 13px; padding: 6px;")
+        btn_sd_on.setStyleSheet("background-color: #2e7d32; font-weight: bold; font-size: 13px; padding: 6px; color: white;")
         btn_sd_on.clicked.connect(lambda: self.set_sd_logging(True))
 
         btn_sd_off = QPushButton("SD Log OFF")
-        btn_sd_off.setStyleSheet("background-color: #c62828; font-weight: bold; font-size: 13px; padding: 6px;")
+        btn_sd_off.setStyleSheet("background-color: #c62828; font-weight: bold; font-size: 13px; padding: 6px; color: white;")
         btn_sd_off.clicked.connect(lambda: self.set_sd_logging(False))
 
         sd_btn_ly.addWidget(btn_sd_on)
@@ -833,6 +833,7 @@ class GroundStationWindow(QMainWindow):
 
     def blink_state_label(self):
         self.blink_counter += 1
+        p = get_active_palette()
         if self.blink_counter > 6: # Blink 3 times (On/Off)
             self.blink_timer.stop()
             self.state_label.setStyleSheet(f"font-size: 24px; font-weight: bold; color: {self.normal_state_color};")
@@ -841,7 +842,7 @@ class GroundStationWindow(QMainWindow):
         if self.blink_counter % 2 == 0:
             color = self.normal_state_color
         else:
-            color = "white" # Blink color
+            color = p['bg_main'] # Blink off color matches background
             
         self.state_label.setStyleSheet(f"font-size: 24px; font-weight: bold; color: {color};")
         
@@ -1041,6 +1042,72 @@ class GroundStationWindow(QMainWindow):
         self.alt_plot.zoom_to_last(zoom_duration)
         self.temp_plot.zoom_to_last(zoom_duration)
 
+    def toggle_theme(self):
+        new_theme = toggle_theme()
+        p = get_active_palette()
+
+        # Update app-level stylesheet and palette
+        QApplication.instance().setPalette(get_qpalette(p))
+        QApplication.instance().setStyleSheet(get_stylesheet(p))
+
+        # Update theme button
+        if new_theme == "light":
+            self.theme_btn.setText("DARK MODE")
+        else:
+            self.theme_btn.setText("LIGHT MODE")
+
+        # Update header labels
+        self.total_time_label.setStyleSheet(f"font-size: 18px; font-weight: bold; color: {p['text']}; background-color: {p['bg_panel']}; padding: 5px;")
+        self.timer_label.setStyleSheet(f"font-size: 24px; font-weight: bold; color: {p['text']}; background-color: {p['bg_panel']}; padding: 5px;")
+        self.real_time_label.setStyleSheet(f"font-size: 18px; font-weight: bold; color: {p['text_secondary']}; background-color: {p['bg_panel']}; padding: 5px;")
+        self.t_zero_label.setStyleSheet(f"font-size: 18px; font-weight: bold; color: {p['text_secondary']}; background-color: {p['bg_panel']}; padding: 5px;")
+
+        # Re-apply current state color to state label
+        self.state_label.setStyleSheet(f"font-size: 24px; font-weight: bold; color: {self.normal_state_color};")
+
+        # Update GPS widget
+        self.gps_widget.title.setStyleSheet(f"font-weight: bold; font-size: 14px; color: {p['text']};")
+        self.gps_widget.val_label.setStyleSheet(f"font-size: 24px; font-weight: bold; color: gold; border: 2px solid {p['border_light']}; border-radius: 5px; padding: 10px; background-color: {p['bg_panel']};")
+
+        # Update SD log status
+        sd_color = "#4caf50" if self.sd_log_status_label.text().endswith("ENABLED") else "#f44336"
+        self.sd_log_status_label.setStyleSheet(f"font-size: 13px; font-weight: bold; color: {sd_color}; padding: 4px;")
+
+        # Update 3D views background and text
+        gl_bg = p['gl_bg']
+        gl_text = p['gl_text']
+        gl_grid = p['gl_grid']
+
+        self.flight_view3d.view.setBackgroundColor(gl_bg)
+        self.rocket_view.view.setBackgroundColor(gl_bg)
+
+        # Update GL text and tick items in flight path view
+        for item in getattr(self.flight_view3d, '_gl_text_items', []):
+            item.setData(color=gl_text)
+        for item in getattr(self.flight_view3d, '_gl_tick_items', []):
+            item.setData(color=gl_grid)
+
+        # Update flight path legend and rocket orientation legend
+        # (These are stored in local variables during __init__, so we re-style them via findChildren)
+        for legend in self.flight_view3d.findChildren(QLabel):
+            legend.setStyleSheet(f"color: {p['text']}; font-weight: bold; background-color: rgba({','.join(str(int(c*255)) for c in gl_bg[:3])},180); padding: 1px; font-size: 10px;")
+        for legend in self.rocket_view.findChildren(QLabel):
+            legend.setStyleSheet(f"color: {p['text']}; font-weight: bold; background-color: rgba({','.join(str(int(c*255)) for c in gl_bg[:3])},180); padding: 1px; font-size: 9px;")
+
+        # Update pyqtgraph plot backgrounds, axes, and legends
+        for plot_widget in [self.accel_plot.plot_widget, self.alt_plot.plot_widget,
+                            self.temp_plot.plot_widget, self.ground_track.plot]:
+            plot_widget.setBackground(p['plot_bg'])
+            plot_widget.getAxis('left').setPen(pg.mkPen(color=p['plot_fg'], width=1))
+            plot_widget.getAxis('bottom').setPen(pg.mkPen(color=p['plot_fg'], width=1))
+            plot_widget.getAxis('left').setTextPen(p['plot_fg'])
+            plot_widget.getAxis('bottom').setTextPen(p['plot_fg'])
+            legend = plot_widget.plotItem.legend
+            if legend is not None:
+                _update_legend_text_color(legend, p['plot_fg'])
+
+        self.log(f"Theme switched to {'LIGHT' if is_dark() == False else 'DARK'} mode")
+
     def closeEvent(self, event):
         self.data_thread.stop()
         event.accept()
@@ -1048,7 +1115,9 @@ class GroundStationWindow(QMainWindow):
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     app.setStyle("Fusion") # Fusion is good base for dark themes
-    app.setStyleSheet(DARK_STYLESHEET)
+    p = get_active_palette()
+    app.setPalette(get_qpalette(p))
+    app.setStyleSheet(get_stylesheet(p))
     window = GroundStationWindow()
     window.show()
     sys.exit(app.exec())
