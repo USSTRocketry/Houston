@@ -2,7 +2,7 @@
 Avionics Ground station
 
 ## Install Instructions
-1. You need Python3, so install that if you dont have it,<br> verify you have it by typing `python3 --version` in the terminal<br>(Ctrl + X then select Terminal (Admin))
+1. You need Python3, so install that if you dont have it,<br> verify you have it by typing `python3 --version` in the terminal<br>(Ctrl + X then select Terminal (Admin) if on Windows, Finder > Applications > Utilities > double-click Terminal if on macOS)
 2. You are going to need a few more libraries for this to run properly,<br> specifically Proto, Numpy, Protobuf, PyOpenGL and PyQt6.
 3. Install them all using:<br>**pip install proto numpy protobuf pyopengl pyqt6 pyqtgraph**
 
