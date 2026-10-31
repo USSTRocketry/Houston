@@ -31,59 +31,67 @@ os.environ["QT_XCB_GL_INTEGRATION"] = "xcb_egl"
 HOST = '127.0.0.1' # Multicast IP
 PORT = 3333
 
-# Dark Mode Theme
-DARK_STYLESHEET = """
+LIGHT_STYLESHEET = """
 QMainWindow, QWidget {
-    background-color: #2b2b2b;
-    color: #e0e0e0;
+    background-color: #f5f5f5;
+    color: #202020;
     font-family: 'Segoe UI', sans-serif;
 }
+
 QGroupBox {
-    border: 2px solid #3e3e3e;
+    border: 2px solid #c0c0c0;
     border-radius: 6px;
     margin-top: 1.5em;
     font-weight: bold;
-    color: #ffd700; /* Gold accent for titles */
+    color: #003366;
+    background-color: white;
 }
+
 QGroupBox::title {
     subcontrol-origin: margin;
     left: 10px;
     padding: 0 5px;
 }
+
 QPushButton {
-    background-color: #3e3e3e;
-    border: 1px solid #555;
+    background-color: #e0e0e0;
+    border: 1px solid #b0b0b0;
     border-radius: 4px;
     padding: 5px;
-    color: white;
+    color: black;
 }
+
 QPushButton:hover {
-    background-color: #4e4e4e;
-    border: 1px solid #777;
+    background-color: #d0d0d0;
 }
+
 QPushButton:pressed {
-    background-color: #222;
+    background-color: #c0c0c0;
 }
+
 QTableWidget {
-    background-color: #1e1e1e;
-    gridline-color: #333;
-    color: #e0e0e0;
-    border: 1px solid #3e3e3e;
+    background-color: white;
+    color: black;
+    gridline-color: #b0b0b0;
+    border: 1px solid #c0c0c0;
 }
+
 QHeaderView::section {
-    background-color: #333;
-    color: white;
+    background-color: #d8d8d8;
+    color: black;
     padding: 4px;
-    border: 1px solid #444;
+    border: 1px solid #b0b0b0;
 }
+
 QTextEdit {
-    background-color: #1e1e1e;
-    color: #00ff00; /* Console like text */
-    border: 1px solid #3e3e3e;
+    background-color: white;
+    color: black;
+    border: 1px solid #c0c0c0;
     font-family: 'Consolas', monospace;
 }
+
 QLabel {
-    color: #e0e0e0;
+    color: black;
 }
 """
 
@@ -230,12 +238,12 @@ class GPSDisplayWidget(QWidget):
         
         title = QLabel("GPS COORDINATES")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title.setStyleSheet("font-weight: bold; font-size: 14px; color: #e0e0e0;")
+        title.setStyleSheet("font-weight: bold; font-size: 14px; color: black;")
         layout.addWidget(title)
         
         self.val_label = QLabel("Lat: --\nLon: -")
         self.val_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.val_label.setStyleSheet("font-size: 24px; font-weight: bold; color: gold; border: 2px solid #555; border-radius: 5px; padding: 10px; background-color: #1e1e1e;")
+        self.val_label.setStyleSheet("font-size: 24px; font-weight: bold; color: #003366; border: 2px solid #555; border-radius: 5px; padding: 10px; background-color: white;")
         layout.addWidget(self.val_label)
 
     def update_gps(self, lat, lon, alt):
@@ -297,7 +305,7 @@ class FlightPathWidget(QWidget):
         
         # 1. Legend - Single Line
         legend = QLabel("Z-axis: 500m | Green:Asc | Red:Dsc")
-        legend.setStyleSheet("color: white; font-weight: bold; background-color: rgba(0,0,0,100); padding: 1px; font-size: 10px;")
+        legend.setStyleSheet("color: black; font-weight: bold; background-color: rgba(255,255,255,180); padding: 1px; font-size: 10px;")
         legend.setFixedHeight(15)
         btn_layout.addWidget(legend)
         
@@ -475,7 +483,7 @@ class RocketOrientationWidget(QWidget):
         
         # Legend for Directions - Smaller
         legend = QLabel("Red=N | Green=E | Blue=Up | Yellow=W | Purple=S")
-        legend.setStyleSheet("color: white; font-weight: bold; background-color: rgba(0,0,0,100); padding: 1px; font-size: 9px;") 
+        legend.setStyleSheet("color: black; font-weight: bold; background-color: rgba(255,255,255,180); padding: 1px; font-size: 9px;") 
         legend.setFixedHeight(15) 
         layout.addWidget(legend)
         
@@ -618,27 +626,27 @@ class GroundStationWindow(QMainWindow):
         self.state_label.setStyleSheet("font-size: 24px; font-weight: bold; color: green;")
         
         self.total_time_label = QLabel("PROG: 0s")
-        self.total_time_label.setStyleSheet("font-size: 18px; font-weight: bold; color: #e0e0e0; background-color: #1e1e1e; padding: 5px;")
+        self.total_time_label.setStyleSheet("font-size: 18px; font-weight: bold; color: black; background-color: white; padding: 5px;")
         
         self.timer_label = QLabel("FLIGHT: 0.0s")
-        self.timer_label.setStyleSheet("font-size: 24px; font-weight: bold; color: white; background-color: #1e1e1e; padding: 5px;")
+        self.timer_label.setStyleSheet("font-size: 24px; font-weight: bold; color: black; background-color: white; padding: 5px;")
         
         self.real_time_label = QLabel("REAL: --:--:--")
-        self.real_time_label.setStyleSheet("font-size: 18px; font-weight: bold; color: #aaa; background-color: #1e1e1e; padding: 5px;")
+        self.real_time_label.setStyleSheet("font-size: 18px; font-weight: bold; color: black; background-color: white; padding: 5px;")
         
         self.t_zero_label = QLabel("T-NULL: --:--:--")
-        self.t_zero_label.setStyleSheet("font-size: 18px; font-weight: bold; color: #aaa; background-color: #1e1e1e; padding: 5px;")
+        self.t_zero_label.setStyleSheet("font-size: 18px; font-weight: bold; color: black; background-color: white; padding: 5px;")
 
         self.scale_btn = QPushButton("SCALE FLIGHT")
         self.scale_btn.setCheckable(True) # Toggle
         self.scale_btn.setStyleSheet("""
-            QPushButton { background-color: #444; color: white; font-weight: bold; font-size: 16px; padding: 10px; }
-            QPushButton:checked { background-color: #004488; border: 2px solid #0088ff; }
+            QPushButton { background-color: #d8d8d8; color: black; font-weight: bold; font-size: 16px; padding: 10px; }
+            QPushButton:checked { background-color: white; border: 1px solid #b0b0b0; }
         """)
         self.scale_btn.clicked.connect(self.scale_graphs_to_flight)
         
         self.abort_btn = QPushButton("ABORT")
-        self.abort_btn.setStyleSheet("background-color: red; color: white; font-weight: bold; font-size: 20px; padding: 10px;")
+        self.abort_btn.setStyleSheet("background-color: #e0e0e0; color: black; font-weight: bold; font-size: 20px; padding: 10px;")
         self.abort_btn.clicked.connect(self.on_abort)
         
         self.header_layout.addWidget(self.state_label)
@@ -930,7 +938,7 @@ class GroundStationWindow(QMainWindow):
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     app.setStyle("Fusion") # Fusion is good base for dark themes
-    app.setStyleSheet(DARK_STYLESHEET)
+    app.setStyleSheet(LIGHT_STYLESHEET)
     window = GroundStationWindow()
     window.show()
     sys.exit(app.exec())
