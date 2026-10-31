@@ -1,5 +1,6 @@
 import os
 import sys
+import json
 if sys.platform.startswith('linux'):
     os.environ["QT_QPA_PLATFORM"] = "xcb"
 
@@ -27,7 +28,7 @@ os.environ["QT_XCB_GL_INTEGRATION"] = "xcb_egl"
 
 
 # Network Configuration
-HOST = '192.168.4.1' # Multicast IP
+HOST = '127.0.0.1' # Multicast IP
 PORT = 3333
 
 # Dark Mode Theme
@@ -118,14 +119,13 @@ class NetworkReceiver(QThread):
                 while self.running:
                     try:
                         # Read from the TCP stream. 2048 bytes is plenty for LoRa payloads
-                        data = s.recv(2048) 
-                        
+                        data = s.recv(2048)
                         if not data:
                             self.log_message.emit("Connection closed by ESP32.")
                             break # Break inner loop to reconnect
                             
                         # Pass the raw bytes to your protobuf decoder
-                        decoded_dict = ProtoDecode(data)
+                        decoded_dict = json.loads(data.decode('utf-8'))
                         if decoded_dict:
                             self.new_data.emit(decoded_dict)
                             
@@ -133,10 +133,12 @@ class NetworkReceiver(QThread):
                         continue # Timeout just lets us loop back and check self.running
                     except socket.error as e:
                         self.log_message.emit(f"Socket read error: {e}")
-                        break 
+                        break
+                    
                         
             except Exception as e:
-                self.log_message.emit(f"Connection failed: {e}. Retrying in 3s...")
+                        self.log_message.emit(f"Connection failed: {e}")
+                        break    
             finally:
                 if s:
                     try:

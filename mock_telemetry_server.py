@@ -7,8 +7,8 @@ import math
 import numpy as np
 
 # Configuration
-HOST = '0.0.0.0'
-PORT = 33333
+HOST = '127.0.0.1'
+PORT = 3333
 DT = 0.5 # Simulation Step (Seconds) - Sync with Broadcast Interval
 
 class RocketPhysics:
