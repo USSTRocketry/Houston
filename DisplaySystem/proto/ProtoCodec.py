@@ -1,4 +1,6 @@
-from proto.ProtoMain_pb2 import MainMessage
+from .ProtoMain_pb2 import MainMessage
+from . import ProtoMain_pb2
+from . import RocketGroundCommunication_pb2
 
 def ProtoDecode(buffer: bytes):
     msg = MainMessage()

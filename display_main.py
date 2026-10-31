@@ -18,7 +18,7 @@ import pyqtgraph.opengl as gl
 import numpy as np
 import socket
 import json
-from ProtoCodec import ProtoDecode
+from DisplaySystem.proto.ProtoCodec import ProtoDecode
 
 # Tell PyOpenGL to use the modern EGL driver context instead of X11/GLX
 os.environ["PYOPENGL_PLATFORM"] = "egl"
