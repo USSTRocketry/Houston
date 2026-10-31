@@ -6,7 +6,7 @@ Avionics Ground station
 2. You are going to need a few more libraries for this to run properly,<br> specifically Proto, Numpy, Protobuf, PyOpenGL and PyQt6.
 3. Install them all using:<br>**pip install proto numpy protobuf pyopengl pyqt6 pyqtgraph**
 
-**PLEASE NOTE:** display_main.py is currently adjusted to listen to the mock_telemetry_server.py. Adjust the incoming IP/port on display_main.py before running so it connects to the proper ESP32 or whatever you are using
+**PLEASE NOTE:** display_main.py is currently adjusted to listen to the mock_telemetry_server.py. Adjust the incoming IP/port on display_main.py before running so it connects to the proper ESP32 or whatever you are using.<br>This can be edited on lines 30-33 if editing the display_main.py
 
 
 ### Documentation and tutorials
